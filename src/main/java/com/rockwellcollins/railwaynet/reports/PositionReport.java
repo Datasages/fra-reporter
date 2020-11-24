@@ -6,9 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.text.SimpleDateFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -21,7 +19,7 @@ public class PositionReport {
     private static final SimpleDateFormat UTC_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
 
-    public static final int EXCEL_CDF_START_ROW = 6;
+    public static final int EXCEL_CDF_START_ROW = 5;
     public static final int EXCEL_COVER_ROW = 14;
 
     private final Properties config;
@@ -92,7 +90,7 @@ public class PositionReport {
         return parts[2] + "-" + parts[3];
     }
 
-    private void makeExcel(String fileName, List<Document> messages) {
+    private void makeExcel(String fileName, List<Document> messages, List<Document> messages2010) {
         logger.debug("Creating Excel document");
         this.handleTime(messages);
 
@@ -115,11 +113,14 @@ public class PositionReport {
         XSSFSheet eachSheet = workbook.getSheet("Each 2080 received by BOS");
         XSSFSheet cdfSheet = workbook.getSheet("Summary Of Locos with CDF");
         XSSFSheet notActiveSheet = workbook.getSheet("Summary Of Locos Not Active");
-        XSSFSheet coverSheet = workbook.getSheet("Summary Of Locos Not Active");
+        XSSFSheet coverSheet = workbook.getSheet("Cover Sheet");
 
-        int rowCount = 3;
+        int rowCount = 2;
         int cdfSheetRowCount = EXCEL_CDF_START_ROW;
-        int coverSheetCdfCol = 3;
+        int notActiveRowCount = EXCEL_CDF_START_ROW;
+        int coverSheetCdfCol = 2;
+
+        Map<String, Train> trains = new HashMap<>();
 
         for (Document record : messages) {
 
@@ -128,12 +129,59 @@ public class PositionReport {
                         ", free heap: " + Runtime.getRuntime().freeMemory());
             }
 
-            Row eachSheetRow = eachSheet.createRow(rowCount++);
+            Integer type = record.getInteger("idType");
 
-            int columnCount = 0;
+            String srcAddress = record.getString("srcAddress");
+            Train train = trains.get(srcAddress);
+
+            if (train == null) {
+                train = new Train(srcAddress);
+                trains.put(srcAddress, train);
+            }
+
+            String messageStatus = record.getString("locomotiveState");
+            String trainID = record.getString("trainID");
+
+            if (messageStatus.equals("DISENGAGED")) {
+                train.status = TrainStatus.DISENGAGED;
+                train.disengagedMessage = record;
+                train.trainId = trainID;
+            }
+
+            if (messageStatus.equals("ACTIVE")) {
+                if (train.status == TrainStatus.DISENGAGED &&
+                        (!train.trainId.isEmpty()) &&
+                        train.trainId.equals(trainID))
+                    train.status = TrainStatus.UNKNOWN;
+            }
 
             String locoID = getLocoIdFromSrcAddressString((String) record.get("srcAddress"));
             String scac = getScacFromSrcAddress((String) record.get("srcAddress"));
+
+            int columnCount = 0;
+
+            if (train.status == TrainStatus.DISENGAGED &&
+                !train.trainId.equals(trainID)) {
+                // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
+                Row notActiveSheetRow = notActiveSheet.createRow(notActiveRowCount++);
+                notActiveSheetRow.createCell(columnCount++).setCellValue(train.trainId);
+                notActiveSheetRow.createCell(columnCount++).setCellValue(locoID);
+                notActiveSheetRow.createCell(columnCount++).setCellValue(scac);
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("timeUTC"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("dateUTC"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("headEndMilepost"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("headEndTrackName"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("headEndScac"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("headEndSubdivDistrictId"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("rearEndMilepost"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("rearEndTrackName"));
+                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("rearEndScac"));
+                notActiveSheetRow.createCell(columnCount).setCellValue((Integer) train.disengagedMessage.get("rearEndSubdivDistrictId"));
+            }
+
+            Row eachSheetRow = eachSheet.createRow(rowCount++);
+
+            columnCount = 0;
 
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("trainID"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("timeUTC"));
@@ -166,7 +214,7 @@ public class PositionReport {
             eachSheetRow.createCell(columnCount).setCellValue((Integer) record.get("distanceElapsed"));
 
             String locoState = record.get("locomotiveState").toString();
-            if (locoState.equals("Cut-out") || locoState.equals("Disengaged") || locoState.equals("Failed")) {
+            if (locoState.equals("CUT_OUT") || locoState.equals("DISENGAGED") || locoState.equals("FAILED")) {
                 columnCount = 0;
                 Row cdfSheetRow = cdfSheet.createRow(cdfSheetRowCount++);
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("trainID"));
@@ -188,6 +236,40 @@ public class PositionReport {
 
         Row cdfCoverRow = coverSheet.createRow(EXCEL_COVER_ROW);
         cdfCoverRow.createCell(coverSheetCdfCol).setCellValue(Integer.toString(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1));
+        cdfCoverRow.createCell(0).setCellValue(Integer.toString(notActiveRowCount - EXCEL_CDF_START_ROW - 1));
+
+        // make one array of all messages sorted by time
+        /*
+        SortedMap<Integer, Document> allMessages = new TreeMap<>();
+        messages.forEach(message -> allMessages.put(message.getInteger("time"), message));
+        messages2010.forEach(message -> allMessages.put(message.getInteger("time"), message));
+
+        for (Document message: allMessages.values()) {
+            Integer type = message.getInteger("idType");
+
+            String srcAddress = message.getString("srcAddress");
+            Train train = trains.get(srcAddress);
+
+            if (train == null) {
+                train = new Train(srcAddress);
+                trains.put(srcAddress, train);
+            }
+
+            if (type == 2080) {
+                train.speed = message.getInteger("speed");
+            }
+            if (type == 2010) {
+                String state = message.getString("locomotiveState");
+                if (state == null) continue;
+                if (state.equals("INITIALIZING")) {
+                    train.status = TrainStatus.INITIALIZING;
+                }
+                if (state.equals("DISENGAGED")) {
+                    train.status = TrainStatus.INIT;
+                }
+            }
+        }
+        */
 
         try (FileOutputStream outputStream = new FileOutputStream(fileName)) {
             workbook.write(outputStream);
@@ -208,7 +290,29 @@ public class PositionReport {
         logger.debug("Loading 2080 messages");
         List<Document> messages2080 = messagesDatabase.getMessages(from, to, 2080);
 
+        logger.debug("Loading 2010 messages");
+        List<Document> messages2010 = messagesDatabase.getMessages(from, to, 2010);
+
         logger.debug("Generating Excel file");
-        makeExcel(fileName, messages2080);
+        makeExcel(fileName, messages2080, messages2010);
+    }
+
+    private enum TrainStatus {
+        UNKNOWN,
+        INITIALIZING,
+        DISENGAGED
+    }
+
+    private class Train {
+
+        final String srcAddress;
+        TrainStatus status = TrainStatus.UNKNOWN;
+        long speed = 0;
+        String trainId = "";
+        Document disengagedMessage;
+
+        Train(String srcAddress) {
+            this.srcAddress = srcAddress;
+        }
     }
 }
