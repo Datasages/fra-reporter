@@ -164,7 +164,10 @@ public class PositionReport {
                 !train.trainId.equals(trainID)) {
                 // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
                 Row notActiveSheetRow = notActiveSheet.createRow(notActiveRowCount++);
+
                 notActiveSheetRow.createCell(columnCount++).setCellValue(train.trainId);
+                train.trainId = trainID;
+
                 notActiveSheetRow.createCell(columnCount++).setCellValue(locoID);
                 notActiveSheetRow.createCell(columnCount++).setCellValue(scac);
                 notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("timeUTC"));
@@ -234,9 +237,9 @@ public class PositionReport {
             }
         }
 
-        Row cdfCoverRow = coverSheet.createRow(EXCEL_COVER_ROW);
-        cdfCoverRow.createCell(coverSheetCdfCol).setCellValue(Integer.toString(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1));
-        cdfCoverRow.createCell(0).setCellValue(Integer.toString(notActiveRowCount - EXCEL_CDF_START_ROW - 1));
+        Row coverRow = coverSheet.createRow(EXCEL_COVER_ROW - 1);
+        coverRow.createCell(2).setCellValue(Integer.toString(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1));
+        coverRow.createCell(0).setCellValue(Integer.toString(notActiveRowCount - EXCEL_CDF_START_ROW - 1));
 
         // make one array of all messages sorted by time
         /*
