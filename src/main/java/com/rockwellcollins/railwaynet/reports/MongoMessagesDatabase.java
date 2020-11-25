@@ -1,5 +1,6 @@
 package com.rockwellcollins.railwaynet.reports;
 
+import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.client.MongoCollection;
@@ -52,7 +53,7 @@ public class MongoMessagesDatabase {
         conditions.add(eq("idType", 2003));
         Bson filter = and(conditions);
 
-        try (MongoCursor<Document> cursor = messages.find(filter)
+        try (MongoCursor<Document> cursor = messages.find(filter).sort(new BasicDBObject("time", 1))
                 .iterator()) {
             while (cursor.hasNext()) {
                 result.add(cursor.next());
@@ -122,7 +123,7 @@ public class MongoMessagesDatabase {
         Bson filter = and(conditions);
 
         logger.debug("Filter is ready, running request to Mongo...");
-        try (MongoCursor<Document> cursor = messages.find(filter)
+        try (MongoCursor<Document> cursor = messages.find(filter).sort(new BasicDBObject("time", 1))
                 .iterator()) {
             while (cursor.hasNext()) {
                 result.add(cursor.next());

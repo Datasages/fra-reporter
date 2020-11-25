@@ -142,7 +142,7 @@ public class PositionReport {
             String messageStatus = record.getString("locomotiveState");
             String trainID = record.getString("trainID");
 
-            if (messageStatus.equals("DISENGAGED")) {
+            if (messageStatus.equals("DISENGAGED") && train.status != TrainStatus.ACTIVE) {
                 train.status = TrainStatus.DISENGAGED;
                 train.disengagedMessage = record;
                 train.trainId = trainID;
@@ -151,8 +151,9 @@ public class PositionReport {
             if (messageStatus.equals("ACTIVE")) {
                 if (train.status == TrainStatus.DISENGAGED &&
                         (!train.trainId.isEmpty()) &&
-                        train.trainId.equals(trainID))
-                    train.status = TrainStatus.UNKNOWN;
+                        train.trainId.equals(trainID)) {
+                    train.status = TrainStatus.ACTIVE;
+                }
             }
 
             String locoID = getLocoIdFromSrcAddressString((String) record.get("srcAddress"));
@@ -166,8 +167,6 @@ public class PositionReport {
                 Row notActiveSheetRow = notActiveSheet.createRow(notActiveRowCount++);
 
                 notActiveSheetRow.createCell(columnCount++).setCellValue(train.trainId);
-                train.trainId = trainID;
-
                 notActiveSheetRow.createCell(columnCount++).setCellValue(locoID);
                 notActiveSheetRow.createCell(columnCount++).setCellValue(scac);
                 notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("timeUTC"));
@@ -181,6 +180,8 @@ public class PositionReport {
                 notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("rearEndScac"));
                 notActiveSheetRow.createCell(columnCount).setCellValue((Integer) train.disengagedMessage.get("rearEndSubdivDistrictId"));
             }
+
+            train.trainId = trainID;
 
             Row eachSheetRow = eachSheet.createRow(rowCount++);
 
@@ -217,7 +218,7 @@ public class PositionReport {
             eachSheetRow.createCell(columnCount).setCellValue((Integer) record.get("distanceElapsed"));
 
             String locoState = record.get("locomotiveState").toString();
-            if (locoState.equals("CUT_OUT") || locoState.equals("DISENGAGED") || locoState.equals("FAILED")) {
+            if (locoState.equals("CUT_OUT") || locoState.equals("FAILED")) {
                 columnCount = 0;
                 Row cdfSheetRow = cdfSheet.createRow(cdfSheetRowCount++);
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("trainID"));
@@ -238,8 +239,8 @@ public class PositionReport {
         }
 
         Row coverRow = coverSheet.createRow(EXCEL_COVER_ROW - 1);
-        coverRow.createCell(2).setCellValue(Integer.toString(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1));
-        coverRow.createCell(0).setCellValue(Integer.toString(notActiveRowCount - EXCEL_CDF_START_ROW - 1));
+        coverRow.createCell(2).setCellValue(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1);
+        coverRow.createCell(0).setCellValue(notActiveRowCount - EXCEL_CDF_START_ROW - 1);
 
         // make one array of all messages sorted by time
         /*
@@ -303,7 +304,8 @@ public class PositionReport {
     private enum TrainStatus {
         UNKNOWN,
         INITIALIZING,
-        DISENGAGED
+        DISENGAGED,
+        ACTIVE
     }
 
     private class Train {
