@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.function.Predicate;
 
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -90,7 +91,49 @@ public class PositionReport {
         return parts[2] + "-" + parts[3];
     }
 
-    private void makeExcel(String fileName, List<Document> messages, List<Document> messages2010) {
+    /**
+     * Remove messages of next periods from the list
+     * @param messages
+     */
+    private void removeNextPeriod(List<Document> messages) {
+        Map<String, Train> trains = new HashMap<>();
+
+        for (Document record : messages) {
+            String srcAddress = record.getString("srcAddress");
+            Train train = trains.get(srcAddress);
+
+            if (train == null) {
+                train = new Train(srcAddress);
+                trains.put(srcAddress, train);
+            }
+        }
+
+        messages.removeIf(new CheckRoute(trains));
+    }
+
+    /**
+     * A predicate to check if a message belong to a train from the list.
+     * It is used to ignore messages from next period.
+     */
+    private class CheckRoute implements Predicate<Document> {
+
+        private final Map<String, Train> trains;
+
+        CheckRoute(Map<String, Train> trains) {
+            this.trains = trains;
+        }
+
+        @Override
+        public boolean test(Document message) {
+            String trainID = message.getString("trainID");
+            if (trainID == null) return false;
+            Train train = trains.get(message.getString("srcAddress"));
+            if (train == null) return false;
+            return train.trainId.equals(trainID);
+        }
+    }
+
+    private void makeExcel(String fileName, List<Document> messages) {
         logger.debug("Creating Excel document");
         this.handleTime(messages);
 
@@ -118,7 +161,6 @@ public class PositionReport {
         int rowCount = 2;
         int cdfSheetRowCount = EXCEL_CDF_START_ROW;
         int notActiveRowCount = EXCEL_CDF_START_ROW;
-        int coverSheetCdfCol = 2;
 
         Map<String, Train> trains = new HashMap<>();
 
@@ -130,8 +172,8 @@ public class PositionReport {
             }
 
             Integer type = record.getInteger("idType");
-
             String srcAddress = record.getString("srcAddress");
+
             Train train = trains.get(srcAddress);
 
             if (train == null) {
@@ -293,12 +335,13 @@ public class PositionReport {
 
         logger.debug("Loading 2080 messages");
         List<Document> messages2080 = messagesDatabase.getMessages(from, to, 2080);
+        logger.debug("Found 2080 messages: " + messages2080.size());
 
-        logger.debug("Loading 2010 messages");
-        List<Document> messages2010 = messagesDatabase.getMessages(from, to, 2010);
+        removeNextPeriod(messages2080);
+        logger.debug("2080 messages after removing next period: " + messages2080.size());
 
         logger.debug("Generating Excel file");
-        makeExcel(fileName, messages2080, messages2010);
+        makeExcel(fileName, messages2080);
     }
 
     private enum TrainStatus {
