@@ -45,13 +45,29 @@ public class PositionReport {
 
     private void handleTime(List<Document> messages) {
         logger.debug("Adding UTC format time fields");
-        for (Map<String, Object> message : messages) {
+        for (Document message : messages) {
             if (message.containsKey("time")) {
                 message.put("timeUTC", EpochToString((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
                 message.put("dateUTC", EpochToDate((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
             }
             if (message.containsKey("stateTime")) {
                 message.put("stateTimeUTC", EpochToString((Long) message.get("stateTime")));
+            }
+        }
+    }
+
+    private void handleMiles(List<Document> messages) {
+        logger.debug("Adding UTC format time fields");
+        for (Document message : messages) {
+            if (message.containsKey("headEndMilepost")) {
+                int mp = message.getInteger("headEndMilepost");
+                int mp1000 = mp / 1000;
+                message.put("headEndMilepost1000", mp1000);
+            }
+            if (message.containsKey("rearEndMilepost")) {
+                int mp = message.getInteger("rearEndMilepost");
+                int mp1000 = mp / 1000;
+                message.put("rearEndMilepost1000", mp1000);
             }
         }
     }
@@ -93,7 +109,7 @@ public class PositionReport {
 
     /**
      * Remove messages of next periods from the list
-     * @param messages
+     * @param messages Messages list to update
      */
     private void removeNextPeriod(List<Document> messages) {
         Map<String, Train> trains = new HashMap<>();
@@ -115,7 +131,7 @@ public class PositionReport {
      * A predicate to check if a message belong to a train from the list.
      * It is used to ignore messages from next period.
      */
-    private class CheckRoute implements Predicate<Document> {
+    private static class CheckRoute implements Predicate<Document> {
 
         private final Map<String, Train> trains;
 
@@ -133,9 +149,36 @@ public class PositionReport {
         }
     }
 
+    private void fillNotActiveSheet(XSSFSheet notActiveSheet, SortedMap<Integer, Document> messages) {
+        int notActiveRowCount = EXCEL_CDF_START_ROW;
+
+        for (Document record : messages.values()) {
+            Row row = notActiveSheet.createRow(notActiveRowCount++);
+
+            String locoID = getLocoIdFromSrcAddressString(record.getString("srcAddress"));
+            String scac = getScacFromSrcAddress(record.getString("srcAddress"));
+
+            int columnCount = 0;
+            row.createCell(columnCount++).setCellValue(record.getString("trainID"));
+            row.createCell(columnCount++).setCellValue(locoID);
+            row.createCell(columnCount++).setCellValue(scac);
+            row.createCell(columnCount++).setCellValue(record.getString("timeUTC"));
+            row.createCell(columnCount++).setCellValue(record.getString("dateUTC"));
+            row.createCell(columnCount++).setCellValue(record.getInteger("headEndMilepost1000"));
+            row.createCell(columnCount++).setCellValue(record.getString("headEndTrackName"));
+            row.createCell(columnCount++).setCellValue(record.getString("headEndScac"));
+            row.createCell(columnCount++).setCellValue(record.getInteger("headEndSubdivDistrictId"));
+            row.createCell(columnCount++).setCellValue(record.getInteger("rearEndMilepost1000"));
+            row.createCell(columnCount++).setCellValue(record.getString("rearEndTrackName"));
+            row.createCell(columnCount++).setCellValue(record.getString("rearEndScac"));
+            row.createCell(columnCount).setCellValue(record.getInteger("rearEndSubdivDistrictId"));
+        }
+    }
+
     private void makeExcel(String fileName, List<Document> messages) {
         logger.debug("Creating Excel document");
         this.handleTime(messages);
+        this.handleMiles(messages);
 
         FileInputStream inputStream;
         try {
@@ -154,24 +197,22 @@ public class PositionReport {
         }
 
         XSSFSheet eachSheet = workbook.getSheet("Each 2080 received by BOS");
-        XSSFSheet cdfSheet = workbook.getSheet("Summary Of Locos with CDF");
-        XSSFSheet notActiveSheet = workbook.getSheet("Summary Of Locos Not Active");
+        XSSFSheet cdfSheet = workbook.getSheet("Summary Of Locos with C and F");
         XSSFSheet coverSheet = workbook.getSheet("Cover Sheet");
 
         int rowCount = 2;
         int cdfSheetRowCount = EXCEL_CDF_START_ROW;
-        int notActiveRowCount = EXCEL_CDF_START_ROW;
 
         Map<String, Train> trains = new HashMap<>();
+        SortedMap<Integer, Document> notActiveMessages = new TreeMap<>();
 
         for (Document record : messages) {
 
-            if (logger.isDebugEnabled()) {
-                logger.debug("Heap space: " + Runtime.getRuntime().totalMemory() +
+            if (logger.isTraceEnabled()) {
+                logger.trace("Heap space: " + Runtime.getRuntime().totalMemory() +
                         ", free heap: " + Runtime.getRuntime().freeMemory());
             }
 
-            Integer type = record.getInteger("idType");
             String srcAddress = record.getString("srcAddress");
 
             Train train = trains.get(srcAddress);
@@ -201,45 +242,29 @@ public class PositionReport {
             String locoID = getLocoIdFromSrcAddressString((String) record.get("srcAddress"));
             String scac = getScacFromSrcAddress((String) record.get("srcAddress"));
 
-            int columnCount = 0;
-
             if (train.status == TrainStatus.DISENGAGED &&
                 !train.trainId.equals(trainID)) {
                 // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
-                Row notActiveSheetRow = notActiveSheet.createRow(notActiveRowCount++);
-
-                notActiveSheetRow.createCell(columnCount++).setCellValue(train.trainId);
-                notActiveSheetRow.createCell(columnCount++).setCellValue(locoID);
-                notActiveSheetRow.createCell(columnCount++).setCellValue(scac);
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("timeUTC"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("dateUTC"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("headEndMilepost"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("headEndTrackName"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("headEndScac"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("headEndSubdivDistrictId"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((Integer) train.disengagedMessage.get("rearEndMilepost"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("rearEndTrackName"));
-                notActiveSheetRow.createCell(columnCount++).setCellValue((String) train.disengagedMessage.get("rearEndScac"));
-                notActiveSheetRow.createCell(columnCount).setCellValue((Integer) train.disengagedMessage.get("rearEndSubdivDistrictId"));
+                notActiveMessages.put(train.disengagedMessage.getInteger("time"), train.disengagedMessage);
             }
 
             train.trainId = trainID;
 
             Row eachSheetRow = eachSheet.createRow(rowCount++);
 
-            columnCount = 0;
+            int columnCount = 0;
 
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("trainID"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("timeUTC"));
             eachSheetRow.createCell(columnCount++).setCellValue(locoID);
             eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("ptcAuthorityReferenceNumber"));
-            eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndMilepost"));
+            eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndMilepost1000"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndMilepostPrefix"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndMilepostSuffix"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndTrackName"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndScac"));
             eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndSubdivDistrictId"));
-            eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("rearEndMilepost"));
+            eachSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("rearEndMilepost1000"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("rearEndMilepostPrefix"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("rearEndMilepostSuffix"));
             eachSheetRow.createCell(columnCount++).setCellValue((String) record.get("rearEndTrackName"));
@@ -269,20 +294,22 @@ public class PositionReport {
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("timeUTC"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("dateUTC"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("locomotiveState"));
-                cdfSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndMilepost"));
+                cdfSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndMilepost1000"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndTrackName"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("headEndScac"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("headEndSubdivDistrictId"));
-                cdfSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("rearEndMilepost"));
+                cdfSheetRow.createCell(columnCount++).setCellValue((Integer) record.get("rearEndMilepost1000"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("rearEndTrackName"));
                 cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("rearEndScac"));
                 cdfSheetRow.createCell(columnCount).setCellValue((Integer) record.get("rearEndSubdivDistrictId"));
             }
         }
 
+        fillNotActiveSheet(workbook.getSheet("Summary Of Locos Not Active"), notActiveMessages);
+
         Row coverRow = coverSheet.createRow(EXCEL_COVER_ROW - 1);
         coverRow.createCell(2).setCellValue(cdfSheetRowCount - EXCEL_CDF_START_ROW - 1);
-        coverRow.createCell(0).setCellValue(notActiveRowCount - EXCEL_CDF_START_ROW - 1);
+        coverRow.createCell(0).setCellValue(notActiveMessages.size() - EXCEL_CDF_START_ROW - 1);
 
         // make one array of all messages sorted by time
         /*
@@ -346,16 +373,14 @@ public class PositionReport {
 
     private enum TrainStatus {
         UNKNOWN,
-        INITIALIZING,
         DISENGAGED,
         ACTIVE
     }
 
-    private class Train {
+    private static class Train {
 
         final String srcAddress;
         TrainStatus status = TrainStatus.UNKNOWN;
-        long speed = 0;
         String trainId = "";
         Document disengagedMessage;
 
