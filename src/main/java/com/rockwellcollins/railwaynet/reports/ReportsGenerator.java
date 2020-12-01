@@ -1,6 +1,5 @@
 package com.rockwellcollins.railwaynet.reports;
 
-import com.amazonaws.services.dynamodbv2.xspec.S;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +20,7 @@ public class ReportsGenerator {
 
         EnforcementReport enforcementReport = new EnforcementReport(config);
         PositionReport positionReport = new PositionReport(config);
+        InitFailedReport initFailedReport = new InitFailedReport(config);
         logger.debug("Enforcement and Position reports generators initialized");
 
         String startMonthly;
@@ -39,6 +39,14 @@ public class ReportsGenerator {
                     (month > 9 ? month : "0" + month) + "-01";
         }
 
+        if (mongo.noMonthlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, targetMonth)) {
+            logger.debug("Monthly Init Failed Report doesn't exist, generating new one");
+            String reportFileName = "Monthly_AMTK_PTC_Init_Failed_Report_" + year + "_" + targetMonth + ".xlsx";
+            initFailedReport.generateReport(reportFileName, startMonthly, endMonthly);
+            s3Repository.upload(reportFileName);
+            mongo.insertMonthlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, targetMonth, reportFileName);
+        }
+        /*
         if (mongo.noMonthlyReport(MongoReportsDatabase.LOCO_POSITION_REPORT, year, targetMonth)) {
             logger.debug("Monthly Position Report doesn't exist, generating new one");
             String reportFileName = "Monthly_AMTK_PTC_Loco_Position_Report_" + year + "_" + targetMonth + ".xlsx";
@@ -53,6 +61,8 @@ public class ReportsGenerator {
             s3Repository.upload(reportFileName);
             mongo.insertMonthlyReport(MongoReportsDatabase.ENFORCEMENT_REPORT, year, targetMonth, reportFileName);
         }
+        */
+        /*
 
         String startQuarterly;
         String endQuarterly;
@@ -70,6 +80,13 @@ public class ReportsGenerator {
             quarter = (month - 1) / 3;
         }
 
+        if (mongo.noQuarterlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, quarter)) {
+            logger.debug("Quarterly Init Failed Report doesn't exist, generating new one");
+            String reportFileName = "Quarterly_AMTK_PTC_Init_Failed_Report_" + year + "_" + quarter + ".xlsx";
+            initFailedReport.generateReport(reportFileName, startQuarterly, endQuarterly);
+            s3Repository.upload(reportFileName);
+            mongo.insertQuarterlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, quarter, reportFileName);
+        }
         if (mongo.noQuarterlyReport(MongoReportsDatabase.LOCO_POSITION_REPORT, year, quarter)) {
             logger.debug("Quarterly Position Report doesn't exist, generating new one");
             String reportFileName = "Quarterly_AMTK_PTC_Loco_Position_Report_" + year + "_" + quarter + ".xlsx";
@@ -84,6 +101,7 @@ public class ReportsGenerator {
             s3Repository.upload(reportFileName);
             mongo.insertQuarterlyReport(MongoReportsDatabase.ENFORCEMENT_REPORT, year, quarter, reportFileName);
         }
+        */
 
         logger.debug("Reports completed.");
     }

@@ -5,71 +5,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.function.Predicate;
 
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-public class PositionReport {
+public class PositionReport extends AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(PositionReport.class);
-
-    private static final SimpleDateFormat UTC_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
 
     public static final int EXCEL_CDF_START_ROW = 5;
     public static final int EXCEL_COVER_ROW = 14;
 
-    private final Properties config;
-
-    public PositionReport(Properties config) {
-        this.config = config;
-    }
-
-    private static String EpochToString(Long millis) {
-        if (millis > 0)
-            return UTC_FORMAT.format(new java.util.Date(millis));
-        else
-            return "Invalid";
-    }
-
-    private static String EpochToDate(Long millis) {
-        if (millis > 0)
-            return DATE_FORMAT.format(new java.util.Date(millis));
-        else
-            return "Invalid";
-    }
-
-    private void handleTime(List<Document> messages) {
-        logger.debug("Adding UTC format time fields");
-        for (Document message : messages) {
-            if (message.containsKey("time")) {
-                message.put("timeUTC", EpochToString((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
-                message.put("dateUTC", EpochToDate((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
-            }
-            if (message.containsKey("stateTime")) {
-                message.put("stateTimeUTC", EpochToString((Long) message.get("stateTime")));
-            }
-        }
-    }
-
-    private void handleMiles(List<Document> messages) {
-        logger.debug("Adding UTC format time fields");
-        for (Document message : messages) {
-            if (message.containsKey("headEndMilepost")) {
-                int mp = message.getInteger("headEndMilepost");
-                double mp1000 = mp / 1000.0;
-                message.put("headEndMilepost1000", mp1000);
-            }
-            if (message.containsKey("rearEndMilepost")) {
-                int mp = message.getInteger("rearEndMilepost");
-                double mp1000 = mp / 1000.0;
-                message.put("rearEndMilepost1000", mp1000);
-            }
-        }
+    public PositionReport (Properties config) {
+        super(config);
     }
 
     /**
@@ -105,48 +55,6 @@ public class PositionReport {
         String[] parts = res.split("\\.");
 
         return parts[2] + "-" + parts[3];
-    }
-
-    /**
-     * Remove messages of next periods from the list
-     * @param messages Messages list to update
-     */
-    private void removeNextPeriod(List<Document> messages) {
-        Map<String, Train> trains = new HashMap<>();
-
-        for (Document record : messages) {
-            String srcAddress = record.getString("srcAddress");
-            Train train = trains.get(srcAddress);
-
-            if (train == null) {
-                train = new Train(srcAddress);
-                trains.put(srcAddress, train);
-            }
-        }
-
-        messages.removeIf(new CheckRoute(trains));
-    }
-
-    /**
-     * A predicate to check if a message belong to a train from the list.
-     * It is used to ignore messages from next period.
-     */
-    private static class CheckRoute implements Predicate<Document> {
-
-        private final Map<String, Train> trains;
-
-        CheckRoute(Map<String, Train> trains) {
-            this.trains = trains;
-        }
-
-        @Override
-        public boolean test(Document message) {
-            String trainID = message.getString("trainID");
-            if (trainID == null) return false;
-            Train train = trains.get(message.getString("srcAddress"));
-            if (train == null) return false;
-            return train.trainId.equals(trainID);
-        }
     }
 
     private void fillNotActiveSheet(XSSFSheet notActiveSheet, SortedMap<Integer, Document> messages) {
@@ -311,39 +219,6 @@ public class PositionReport {
         coverRow.createCell(2).setCellValue(cdfSheetRowCount - EXCEL_CDF_START_ROW);
         coverRow.createCell(0).setCellValue(notActiveMessages.size());
 
-        // make one array of all messages sorted by time
-        /*
-        SortedMap<Integer, Document> allMessages = new TreeMap<>();
-        messages.forEach(message -> allMessages.put(message.getInteger("time"), message));
-        messages2010.forEach(message -> allMessages.put(message.getInteger("time"), message));
-
-        for (Document message: allMessages.values()) {
-            Integer type = message.getInteger("idType");
-
-            String srcAddress = message.getString("srcAddress");
-            Train train = trains.get(src Address);
-
-            if (train == null) {
-                train = new Train(srcAddress);
-                trains.put(srcAddress, train);
-            }
-
-            if (type == 2080) {
-                train.speed = message.getInteger("speed");
-            }
-            if (type == 2010) {
-                String state = message.getString("locomotiveState");
-                if (state == null) continue;
-                if (state.equals("INITIALIZING")) {
-                    train.status = TrainStatus.INITIALIZING;
-                }
-                if (state.equals("DISENGAGED")) {
-                    train.status = TrainStatus.INIT;
-                }
-            }
-        }
-        */
-
         try (FileOutputStream outputStream = new FileOutputStream(fileName)) {
             workbook.write(outputStream);
         } catch (IOException e) {
@@ -371,21 +246,4 @@ public class PositionReport {
         makeExcel(fileName, messages2080);
     }
 
-    private enum TrainStatus {
-        UNKNOWN,
-        DISENGAGED,
-        ACTIVE
-    }
-
-    private static class Train {
-
-        final String srcAddress;
-        TrainStatus status = TrainStatus.UNKNOWN;
-        String trainId = "";
-        Document disengagedMessage;
-
-        Train(String srcAddress) {
-            this.srcAddress = srcAddress;
-        }
-    }
 }

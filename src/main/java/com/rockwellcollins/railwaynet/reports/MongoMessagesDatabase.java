@@ -97,7 +97,9 @@ public class MongoMessagesDatabase {
     }
 
     public List<Document> getMessages(String startDate, String endDate, int type) {
-        logger.debug("Looking for messages...");
+        logger.debug("Looking for messages ... ");
+        logger.debug("Type: " + type);
+        logger.debug("Start: " + startDate + ", end: " + endDate);
 
         List<Document> result = new ArrayList<>();
 

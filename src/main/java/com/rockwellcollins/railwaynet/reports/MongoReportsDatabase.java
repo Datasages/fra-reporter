@@ -34,6 +34,7 @@ public class MongoReportsDatabase {
 
     public static final String LOCO_POSITION_REPORT = "Loco_Position_Report";
     public static final String ENFORCEMENT_REPORT = "Enforcement_Report";
+    public static final String INIT_FAILED_REPORT = "Init_Failed_Report";
 
     private final String baseUrl;
 
