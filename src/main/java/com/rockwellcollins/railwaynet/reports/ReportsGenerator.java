@@ -33,10 +33,9 @@ public class ReportsGenerator {
             targetMonth = 12;
         } else {
             targetMonth = month - 1;
-            startMonthly = year + "-" +
-                    (targetMonth > 9 ? targetMonth : "0" + targetMonth) + "-01";
-            endMonthly = year + "-" +
-                    (month > 9 ? month : "0" + month) + "-01";
+            startMonthly = year + "-" + (targetMonth > 9 ? targetMonth : "0" + targetMonth) + "-01";
+//            endMonthly = year + "-" + (targetMonth > 9 ? targetMonth : "0" + targetMonth) + "-05";
+            endMonthly = year + "-" + (month > 9 ? month : "0" + month) + "-01";
         }
 
         if (mongo.noMonthlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, targetMonth)) {

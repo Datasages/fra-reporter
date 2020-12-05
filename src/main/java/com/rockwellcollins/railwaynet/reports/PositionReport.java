@@ -38,25 +38,6 @@ public class PositionReport extends AbstractReport {
         return srcAddress.split("\\.")[0];
     }
 
-    /**
-     * Take SCAC from srcAddress.
-     *
-     * srcAddress looks like amtk.l.amtk.5:itc
-     * SCAC should be AMTK-5
-     *
-     * @param srcAddress    srcAddress
-     * @return              SCAC
-     */
-    private String getLocoIdFromSrcAddressString(String srcAddress) {
-        if (srcAddress == null || srcAddress.isEmpty())
-            return "";
-
-        String res = srcAddress.split(":")[0];
-        String[] parts = res.split("\\.");
-
-        return parts[2] + "-" + parts[3];
-    }
-
     private void fillNotActiveSheet(XSSFSheet notActiveSheet, SortedMap<Integer, Document> messages) {
         int notActiveRowCount = EXCEL_CDF_START_ROW;
 
@@ -85,8 +66,8 @@ public class PositionReport extends AbstractReport {
 
     private void makeExcel(String fileName, List<Document> messages) {
         logger.debug("Creating Excel document");
-        this.handleTime(messages);
-        this.handleMiles(messages);
+//        this.handleTime(messages);
+//        this.handleMiles(messages);
 
         FileInputStream inputStream;
         try {
@@ -236,7 +217,7 @@ public class PositionReport extends AbstractReport {
         );
 
         logger.debug("Loading 2080 messages");
-        List<Document> messages2080 = messagesDatabase.getMessages(from, to, 2080);
+        List<Document> messages2080 = null; //messagesDatabase.getMessages(from, to, 2080);
         logger.debug("Found 2080 messages: " + messages2080.size());
 
         removeNextPeriod(messages2080);

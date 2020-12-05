@@ -27,6 +27,25 @@ abstract class AbstractReport {
     abstract void generateReport(String fileName, String from, String to);
 
     /**
+     * Take SCAC from srcAddress.
+     *
+     * srcAddress looks like amtk.l.amtk.5:itc
+     * SCAC should be AMTK-5
+     *
+     * @param srcAddress    srcAddress
+     * @return              SCAC
+     */
+    protected String getLocoIdFromSrcAddressString(String srcAddress) {
+        if (srcAddress == null || srcAddress.isEmpty())
+            return "";
+
+        String res = srcAddress.split(":")[0];
+        String[] parts = res.split("\\.");
+
+        return parts[2] + "-" + parts[3];
+    }
+
+    /**
      * A predicate to check if a message belong to a train from the list.
      * It is used to ignore messages from next period.
      */
@@ -50,6 +69,7 @@ abstract class AbstractReport {
 
     /**
      * Remove messages of next periods from the list
+     *
      * @param messages Messages list to update
      */
     protected void removeNextPeriod(List<Document> messages) {
@@ -90,34 +110,28 @@ abstract class AbstractReport {
         }
     }
 
-    protected void handleTime(List<Document> messages) {
-        logger.debug("Adding UTC format time fields");
-        for (Document message : messages) {
-            if (message.containsKey("time")) {
-                message.put("timeUTC", EpochToString((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
-                message.put("dateUTC", EpochToDate((Integer.toUnsignedLong((Integer) message.get("time")) * 1000)));
-            }
-            if (message.containsKey("stateTime")) {
-                message.put("stateTimeUTC", EpochToString(message.getLong("stateTime")));
-            }
-            if (message.containsKey("locomotiveStateTime")) {
-                Document locomotiveStateTime = (Document) message.get("locomotiveStateTime");
-                message.put("locomotiveStateTimeUTC", EpochToString(locomotiveStateTime.getLong("timestamp")));
-            }
+    protected void handleTime(Document message) {
+        if (message.containsKey("time")) {
+            message.put("timeUTC", EpochToString((Integer.toUnsignedLong(message.getInteger("time")) * 1000)));
+            message.put("dateUTC", EpochToDate((Integer.toUnsignedLong(message.getInteger("time")) * 1000)));
+        }
+        if (message.containsKey("stateTime")) {
+            message.put("stateTimeUTC", EpochToString(message.getLong("stateTime")));
+        }
+        if (message.containsKey("locomotiveStateTime")) {
+            Document locomotiveStateTime = (Document) message.get("locomotiveStateTime");
+            message.put("locomotiveStateTimeUTC", EpochToString(locomotiveStateTime.getLong("timestamp")));
         }
     }
 
-    protected void handleMiles(List<Document> messages) {
-        logger.debug("Converting miles to float numbers");
-        for (Document message : messages) {
-            if (message.containsKey("headEndMilepost")) {
-                Integer mp = message.getInteger("headEndMilepost");
-                message.put("headEndMilepost1000", mp == null ? 0 : mp / 1000.0);
-            }
-            if (message.containsKey("rearEndMilepost")) {
-                Integer mp = message.getInteger("rearEndMilepost");
-                message.put("rearEndMilepost1000", mp == null ? 0 : mp / 1000.0);
-            }
+    protected void handleMiles(Document message) {
+        if (message.containsKey("headEndMilepost")) {
+            Integer mp = message.getInteger("headEndMilepost");
+            message.put("headEndMilepost1000", mp == null ? 0 : mp / 1000.0);
+        }
+        if (message.containsKey("rearEndMilepost")) {
+            Integer mp = message.getInteger("rearEndMilepost");
+            message.put("rearEndMilepost1000", mp == null ? 0 : mp / 1000.0);
         }
     }
 

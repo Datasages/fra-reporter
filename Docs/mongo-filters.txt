@@ -1,0 +1,11 @@
+{ "$and" : [ { "locomotiveState" : { "$ne": "FAILED" } }, { "locomotiveState" : { "$ne": "SWITCHING" } }, { "locomotiveState" : { "$ne": "ACTIVE" } }, { "locomotiveState" : { "$ne": "CUT_OUT" } }, { "locomotiveState" : { "$ne": "DISENGAGED" } }, {"idType": { "$eq": 2010 } } ] }
+
+{"idType": { "$eq": 2083 } }
+
+{ "$and" : [ {"idType": { "$eq": 2083 } },  {"targetType": { "$eq": "Authority Violation" } } ] }
+
+{ "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} } ] }
+
+{ "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} }, {"time": {"$gt": 1604188800000 } } ] }
+
+{ "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} }, {"time": {"$gt": 1604188800000 } }, {"destAddress" : {"$eq": "amtk.b:gb.nec" } } ] }
