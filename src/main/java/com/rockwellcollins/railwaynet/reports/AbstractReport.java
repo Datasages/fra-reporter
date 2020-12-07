@@ -4,7 +4,6 @@ import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,9 +13,6 @@ import java.util.function.Predicate;
 abstract class AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(AbstractReport.class);
-
-    private static final SimpleDateFormat UTC_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
 
     protected final Properties config;
 
@@ -102,7 +98,6 @@ abstract class AbstractReport {
         String trainId = "";
         Document disengagedMessage;
         Document last2080;
-        Document next2080;
         Document first2010;
 
         Train(String srcAddress) {
@@ -110,43 +105,24 @@ abstract class AbstractReport {
         }
     }
 
-    protected void handleTime(Document message) {
-        if (message.containsKey("time")) {
-            message.put("timeUTC", EpochToString((Integer.toUnsignedLong(message.getInteger("time")) * 1000)));
-            message.put("dateUTC", EpochToDate((Integer.toUnsignedLong(message.getInteger("time")) * 1000)));
-        }
-        if (message.containsKey("stateTime")) {
-            message.put("stateTimeUTC", EpochToString(message.getLong("stateTime")));
-        }
-        if (message.containsKey("locomotiveStateTime")) {
-            Document locomotiveStateTime = (Document) message.get("locomotiveStateTime");
-            message.put("locomotiveStateTimeUTC", EpochToString(locomotiveStateTime.getLong("timestamp")));
-        }
-    }
-
-    protected void handleMiles(Document message) {
-        if (message.containsKey("headEndMilepost")) {
-            Integer mp = message.getInteger("headEndMilepost");
-            message.put("headEndMilepost1000", mp == null ? 0 : mp / 1000.0);
-        }
-        if (message.containsKey("rearEndMilepost")) {
-            Integer mp = message.getInteger("rearEndMilepost");
-            message.put("rearEndMilepost1000", mp == null ? 0 : mp / 1000.0);
-        }
-    }
-
-    private static String EpochToString(Long millis) {
-        if (millis > 0)
-            return UTC_FORMAT.format(new java.util.Date(millis));
+    protected long getMessageTime(Document message) {
+        if (message != null)
+            return Integer.toUnsignedLong(message.getInteger("time"));
         else
-            return "Invalid";
+            return Long.MAX_VALUE;
     }
 
-    private static String EpochToDate(Long millis) {
-        if (millis > 0)
-            return DATE_FORMAT.format(new java.util.Date(millis));
-        else
-            return "Invalid";
+    protected Train processTrain(Document message, Map<String, Train> trains) {
+        String srcAddress = message.getString("srcAddress");
+        Train train = trains.get(srcAddress);
+
+        if (train == null) {
+            train = new Train(srcAddress);
+            trains.put(srcAddress, train);
+            logger.debug("Number of trains: " + trains.size());
+        }
+
+        return train;
     }
 
 }

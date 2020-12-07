@@ -4,14 +4,12 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -36,37 +34,6 @@ public class MongoMessagesDatabase {
         return new Date(ldt.atOffset(ZoneOffset.UTC).toInstant().toEpochMilli());
     }
 
-    public List<Document> getMessages2003(String from, String to) {
-        List<Document> result = new ArrayList<>();
-
-        Date startDT = getUTC(from);
-        Date endDate = getUTC(to);
-
-        LocalDateTime dt = new Timestamp(startDT.getTime()).toLocalDateTime().minusHours(48);
-        Date startDate = Timestamp.valueOf(dt);
-
-        logger.debug("Getting 2003 messages");
-        logger.debug("Start millis: " + startDate.getTime());
-        logger.debug("End millis: " + endDate.getTime());
-
-        List<Bson> conditions = new ArrayList<>();
-        conditions.add(gt("time", startDate.getTime() / 1000));
-        conditions.add(lt("time", endDate.getTime() / 1000));
-        conditions.add(eq("idType", 2003));
-        Bson filter = and(conditions);
-
-        logger.debug("Loading 2003 messages from MongoDB");
-        try (MongoCursor<Document> cursor = messages.find(filter).sort(new BasicDBObject("time", 1))
-                .iterator()) {
-            while (cursor.hasNext()) {
-                result.add(cursor.next());
-            }
-        }
-        logger.debug("Loaded messages: " + result.size());
-
-        return result;
-    }
-
     public Iterator<Document> getCursor(String startDate, String endDate, int type, String destAddress) {
         logger.debug("Looking for messages ... ");
         logger.debug("Type: " + type);
@@ -88,7 +55,7 @@ public class MongoMessagesDatabase {
         Bson filter = and(conditions);
 
         logger.debug("Filter is ready, running request to Mongo...");
-        return messages.find(filter).sort(new BasicDBObject("time", 1)).iterator();
+        return new MessagesIterator(messages.find(filter).sort(new BasicDBObject("time", 1)).iterator());
     }
 
 }

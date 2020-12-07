@@ -52,41 +52,9 @@ public class InitFailedReport extends AbstractReport {
         }
     }
 
-    private void enrich2080MessageFields(Document message/*, List<Document> messages2003*/) {
-        this.handleTime(message);
-        this.handleMiles(message);
-        /*
-        message.put("trainID",
-                getTrainIDFrom2003(messages2003,
-                        (String) message.get("srcAddress"),
-                        (Integer) message.get("time"),
-                        (String) message.get("locomotiveStateSummary"))
-        );
-         */
-    }
-
-    private void enrich2010MessageFields(Document message) {
-        this.handleTime(message);
-        this.handleMiles(message);
-    }
-
-    private Train processTrain(Document message, Map<String, Train> trains) {
-        String srcAddress = message.getString("srcAddress");
-        Train train = trains.get(srcAddress);
-
-        if (train == null) {
-            train = new Train(srcAddress);
-            trains.put(srcAddress, train);
-        }
-
-        return train;
-    }
-
     private void process2010(Document message, Map<String, Train> trains,
                              List<Document> rows2080, List<Document> rows2010,
                              List<Document> rowsLast) {
-
-        enrich2010MessageFields(message);
 
         if (message == null)
             return;
@@ -134,9 +102,6 @@ public class InitFailedReport extends AbstractReport {
     private void process2080(Document message, Map<String, Train> trains,
                              List<Document> rows2080, List<Document> rows2010,
                              List<Document> rowsLast) {
-
-        enrich2080MessageFields(message);
-
         Train train = processTrain(message, trains);
         train.last2080 = message;
 
@@ -151,13 +116,6 @@ public class InitFailedReport extends AbstractReport {
                 train.status = TrainStatus.UNKNOWN;
             }
         }
-    }
-
-    private long getMessageTime(Document message) {
-        if (message != null)
-            return Integer.toUnsignedLong(message.getInteger("time"));
-        else
-            return Long.MAX_VALUE;
     }
 
     @Override
