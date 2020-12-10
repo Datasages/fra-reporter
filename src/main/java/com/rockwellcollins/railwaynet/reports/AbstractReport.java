@@ -4,10 +4,9 @@ import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.*;
 import java.util.function.Predicate;
 
 abstract class AbstractReport {
@@ -16,11 +15,37 @@ abstract class AbstractReport {
 
     protected final Properties config;
 
-    public AbstractReport(Properties config) {
+    /**
+     * start of report timestamp, epoch seconds
+     */
+    protected final long from;
+
+    /**
+     * end of report timestamp, epoch seconds
+     */
+    protected final long to;
+
+    /**
+     * Create new report generator
+     * @param config    configuration properties
+     * @param from      start of report timestamp, epoch seconds
+     * @param to        end of report timestamp, epoch seconds
+     */
+    public AbstractReport(Properties config, String from, String to) {
+        Date startDT = getUTC(from);
+        Date endDT = getUTC(to);
+
+        this.from = startDT.getTime() / 1000;
+        this.to = endDT.getTime() / 1000;
         this.config = config;
     }
 
-    abstract void generateReport(String fileName, String from, String to);
+    private Date getUTC(String date) {
+        LocalDateTime ldt = LocalDateTime.parse(date + "T" + "00:00:00");
+        return new Date(ldt.atOffset(ZoneOffset.UTC).toInstant().toEpochMilli());
+    }
+
+    abstract void generateReport(String fileName);
 
     /**
      * Take SCAC from srcAddress.

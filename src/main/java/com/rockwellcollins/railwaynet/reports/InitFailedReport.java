@@ -14,42 +14,8 @@ public class InitFailedReport extends AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(InitFailedReport.class);
 
-    public InitFailedReport(Properties config) {
-        super(config);
-    }
-
-    /**
-     * Get the train ID from the last 2003 message for given train and time
-     *
-     * @param messages2003 2003 messages collection
-     * @param srcAddress   train
-     * @param t            time
-     * @param state        train state
-     * @return Train ID
-     */
-    private String getTrainIDFrom2003(List<Document> messages2003, String srcAddress, Integer t, String state) {
-        if (state == null || !state.equals("CONTROLLING"))
-            return "NA";
-
-        int last2003Time = 0;
-        String trainId = null;
-
-        for (Map<String, Object> message : messages2003) {
-            if (message.get("srcAddress").equals(srcAddress)) {
-                int time2003 = (int) message.get("time");
-                if (time2003 < t && time2003 > last2003Time) {
-                    last2003Time = time2003;
-                    trainId = (String) message.get("trainID");
-                }
-            }
-        }
-
-        if (trainId == null) {
-            logger.warn("Can't find TrainID for " + srcAddress);
-            return "";
-        } else {
-            return trainId;
-        }
+    public InitFailedReport(Properties config, String from, String to) {
+        super(config, from, to);
     }
 
     private void process2010(Document message, Map<String, Train> trains,
@@ -58,6 +24,12 @@ public class InitFailedReport extends AbstractReport {
 
         if (message == null)
             return;
+
+        String srcAddress = message.getString("srcAddress");
+        if (srcAddress.startsWith("amtk.")) {
+            // we only are interested in foreign locomotives
+            return;
+        }
 
         Train train = processTrain(message, trains);
 
@@ -87,12 +59,16 @@ public class InitFailedReport extends AbstractReport {
         }
     }
 
-    private void process2005(Document message, Map<String, Train> trains,
-                             List<Document> rows2080, List<Document> rows2010,
-                             List<Document> rowsLast) {
+    private void process2005(Document message, Map<String, Train> trains) {
 
         if (message == null)
             return;
+
+        String srcAddress = message.getString("srcAddress");
+        if (srcAddress.startsWith("amtk.")) {
+            // we only are interested in foreign locomotives
+            return;
+        }
 
         Train train = processTrain(message, trains);
         train.status = TrainStatus.INITIALIZING;
@@ -102,6 +78,16 @@ public class InitFailedReport extends AbstractReport {
     private void process2080(Document message, Map<String, Train> trains,
                              List<Document> rows2080, List<Document> rows2010,
                              List<Document> rowsLast) {
+
+        if (message == null)
+            return;
+
+        String srcAddress = message.getString("srcAddress");
+        if (srcAddress.startsWith("amtk.")) {
+            // we only are interested in foreign locomotives
+            return;
+        }
+
         Train train = processTrain(message, trains);
         train.last2080 = message;
 
@@ -119,7 +105,7 @@ public class InitFailedReport extends AbstractReport {
     }
 
     @Override
-    void generateReport(String fileName, String from, String to) {
+    void generateReport(String fileName) {
         logger.info("Generating Init Failed Report");
 
         MongoMessagesDatabase messagesDatabase = new MongoMessagesDatabase(
@@ -128,9 +114,9 @@ public class InitFailedReport extends AbstractReport {
                 config.getProperty("messages.mongo.collection")
         );
 
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to, 2080, "amtk.b:cibos");
-        Iterator<Document> messages2010 = messagesDatabase.getCursor(from, to, 2010, "amtk.b:cibos");
-        Iterator<Document> messages2005 = messagesDatabase.getCursor(from, to, 2005, "amtk.b:cibos");
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to, 2080, "amtk.b:cibos");
+        Iterator<Document> messages2010 = messagesDatabase.getCursor(this.from, this.to, 2010, "amtk.b:cibos");
+        Iterator<Document> messages2005 = messagesDatabase.getCursor(this.from, this.to, 2005, "amtk.b:cibos");
 
         List<Document> rows2080 = new ArrayList<>();
         List<Document> rows2010 = new ArrayList<>();
@@ -180,7 +166,7 @@ public class InitFailedReport extends AbstractReport {
             }
 
             if (m2005time <= m2010time && m2005time <= m2080time) {
-                process2005(m2005, trains, rows2080, rows2010, rowsLast);
+                process2005(m2005, trains);
                 if (messages2005.hasNext())
                     m2005 = messages2005.next();
                 else

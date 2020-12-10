@@ -18,11 +18,6 @@ public class ReportsGenerator {
         S3Repository s3Repository = new S3Repository(config);
         logger.debug("S3 repository initialized");
 
-        EnforcementReport enforcementReport = new EnforcementReport(config);
-        PositionReport positionReport = new PositionReport(config);
-        InitFailedReport initFailedReport = new InitFailedReport(config);
-        logger.debug("Enforcement and Position reports generators initialized");
-
         String startMonthly;
         String endMonthly;
         int targetMonth;
@@ -41,14 +36,14 @@ public class ReportsGenerator {
         if (mongo.noMonthlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, targetMonth)) {
             logger.debug("Monthly Init Failed Report doesn't exist, generating new one");
             String reportFileName = "Monthly_AMTK_PTC_Init_Failed_Report_" + year + "_" + targetMonth + ".xlsx";
-            initFailedReport.generateReport(reportFileName, startMonthly, endMonthly);
+            new InitFailedReport(config, startMonthly, endMonthly).generateReport(reportFileName);
             s3Repository.upload(reportFileName);
             mongo.insertMonthlyReport(MongoReportsDatabase.INIT_FAILED_REPORT, year, targetMonth, reportFileName);
         }
         if (mongo.noMonthlyReport(MongoReportsDatabase.LOCO_POSITION_REPORT, year, targetMonth)) {
             logger.debug("Monthly Position Report doesn't exist, generating new one");
             String reportFileName = "Monthly_AMTK_PTC_Loco_Position_Report_" + year + "_" + targetMonth + ".xlsx";
-            positionReport.generateReport(reportFileName, startMonthly, endMonthly);
+            new PositionReport(config, startMonthly, endMonthly).generateReport(reportFileName);
             s3Repository.upload(reportFileName);
             mongo.insertMonthlyReport(MongoReportsDatabase.LOCO_POSITION_REPORT, year, targetMonth, reportFileName);
         }

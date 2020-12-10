@@ -29,33 +29,30 @@ public class MongoMessagesDatabase {
         messages = reportsDB.getCollection(collection);
     }
 
-    private Date getUTC(String date) {
-        LocalDateTime ldt = LocalDateTime.parse(date + "T" + "00:00:00");
-        return new Date(ldt.atOffset(ZoneOffset.UTC).toInstant().toEpochMilli());
-    }
-
-    public Iterator<Document> getCursor(String startDate, String endDate, int type, String destAddress) {
+    public Iterator<Document> getCursor(long startDate, long endDate, int type, String destAddress) {
         logger.debug("Looking for messages ... ");
         logger.debug("Type: " + type);
         logger.debug("Start: " + startDate + ", end: " + endDate);
 
-        Date startDT = getUTC(startDate);
-        Date endDT = getUTC(endDate);
-
-        logger.debug("Start millis: " + startDT.getTime());
-        logger.debug("End millis: " + endDT.getTime());
+        logger.debug("Start millis: " + startDate);
+        logger.debug("End millis: " + endDate);
         logger.debug("messageType: " + type);
 
         List<Bson> conditions = new ArrayList<>();
-        conditions.add(gt("time", startDT.getTime() / 1000));
-        conditions.add(lt("time", endDT.getTime() / 1000));
+        conditions.add(gt("time", startDate));
+        conditions.add(lt("time", endDate));
         conditions.add(eq("idType", type));
         if (destAddress != null)
             conditions.add(in("destAddress", destAddress));
         Bson filter = and(conditions);
 
         logger.debug("Filter is ready, running request to Mongo...");
-        return new MessagesIterator(messages.find(filter).sort(new BasicDBObject("time", 1)).iterator());
+        return new MessagesIterator(messages
+                .find(filter)
+                .sort(new BasicDBObject("time", 1))
+                .noCursorTimeout(true)
+                .batchSize(10000)
+                .iterator());
     }
 
 }

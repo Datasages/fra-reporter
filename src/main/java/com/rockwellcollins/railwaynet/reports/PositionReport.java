@@ -17,9 +17,10 @@ public class PositionReport extends AbstractReport {
 
     public static final int EXCEL_CDF_START_ROW = 5;
     public static final int EXCEL_COVER_ROW = 14;
+    public static final String FIELD_TRAIN_ID = "trainID";
 
-    public PositionReport(Properties config) {
-        super(config);
+    public PositionReport(Properties config, String from, String to) {
+        super(config, from, to);
     }
 
     /**
@@ -48,7 +49,7 @@ public class PositionReport extends AbstractReport {
             String scac = getScacFromSrcAddress(record.getString("srcAddress"));
 
             int columnCount = 0;
-            row.createCell(columnCount++).setCellValue(record.getString("trainID"));
+            row.createCell(columnCount++).setCellValue(record.getString(FIELD_TRAIN_ID));
             row.createCell(columnCount++).setCellValue(locoID);
             row.createCell(columnCount++).setCellValue(scac);
             row.createCell(columnCount++).setCellValue(record.getString("dateUTC"));
@@ -75,7 +76,7 @@ public class PositionReport extends AbstractReport {
             String locoID = getLocoIdFromSrcAddressString(record.getString("srcAddress"));
             String scac = getScacFromSrcAddress(record.getString("srcAddress"));
 
-            cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("trainID"));
+            cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get(FIELD_TRAIN_ID));
             cdfSheetRow.createCell(columnCount++).setCellValue(locoID);
             cdfSheetRow.createCell(columnCount++).setCellValue(scac);
             cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("dateUTC"));
@@ -97,7 +98,7 @@ public class PositionReport extends AbstractReport {
 
         FileInputStream inputStream;
         try {
-            inputStream = new FileInputStream(new File("Position_Report_template.xlsx"));
+            inputStream = new FileInputStream("Position_Report_template.xlsx");
         } catch (FileNotFoundException e) {
             e.printStackTrace();
             return;
@@ -134,8 +135,13 @@ public class PositionReport extends AbstractReport {
 
         Train train = processTrain(message, trains);
 
-        train.trainId = message.getString("trainID");
+        if (train.disengagedMessage != null)
+            // keep the old train ID in its DISENGAGED message
+            train.disengagedMessage.put(FIELD_TRAIN_ID, train.trainId);
+
+        train.trainId = message.getString(FIELD_TRAIN_ID);
         logger.debug("Train " + train.srcAddress + " received ID " + train.trainId);
+
         if (train.status == TrainStatus.DISENGAGED) {
             // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
             logger.debug("Not active train detected! srcAddress = " + train.srcAddress);
@@ -149,10 +155,17 @@ public class PositionReport extends AbstractReport {
         if (message == null)
             return;
 
+        String srcAddress = message.getString("srcAddress");
+        if (srcAddress.startsWith("amtk.")) {
+            // we only are interested in foreign locomotives
+            return;
+        }
+
         Train train = processTrain(message, trains);
 
         String locoState = message.get("locomotiveState").toString();
         if (locoState.equals("CUT_OUT") || locoState.equals("FAILED")) {
+            message.put(FIELD_TRAIN_ID, train.trainId);
             rowsCDF.add(message);
             logger.debug("Number of CDF: " + rowsCDF.size());
         }
@@ -165,7 +178,7 @@ public class PositionReport extends AbstractReport {
         }
     }
 
-    public void generateReport(String fileName, String from, String to) {
+    public void generateReport(String fileName) {
         logger.info("Generating Position Reports");
 
         MongoMessagesDatabase messagesDatabase = new MongoMessagesDatabase(
@@ -174,8 +187,8 @@ public class PositionReport extends AbstractReport {
                 config.getProperty("messages.mongo.collection")
         );
 
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to, 2080, "amtk.b:cibos");
-        Iterator<Document> messages2003 = messagesDatabase.getCursor(from, to, 2003, null);
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to, 2080, "amtk.b:cibos");
+        Iterator<Document> messages2003 = messagesDatabase.getCursor(this.from, this.to, 2003, null);
 
         SortedMap<Integer, Document> rowsNotActive = new TreeMap<>();
         List<Document> rowsCDF = new ArrayList<>();

@@ -6,6 +6,9 @@
 
 { "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} } ] }
 
+{ "$and" : [ {"idType": { "$eq": 2080 } },  {"srcAddress" : { "$eq": "amtk.l.cdtx.8310:itc"} }, {"time" : { "$eq": 1605593166} }, {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} } ] }
+
 { "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} }, {"time": {"$gt": 1604188800000 } } ] }
 
 { "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} }, {"time": {"$gt": 1604188800000 } }, {"destAddress" : {"$eq": "amtk.b:gb.nec" } } ] }
+
