@@ -1,9 +1,14 @@
 package com.rockwellcollins.railwaynet.reports;
 
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.print.Doc;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -25,11 +30,16 @@ abstract class AbstractReport {
      */
     protected final long to;
 
+    protected final MongoMessagesDatabase messagesDatabase;
+
+    protected final XSSFWorkbook workbook;
+
     /**
      * Create new report generator
-     * @param config    configuration properties
-     * @param from      start of report timestamp, epoch seconds
-     * @param to        end of report timestamp, epoch seconds
+     *
+     * @param config configuration properties
+     * @param from   start of report timestamp, epoch seconds
+     * @param to     end of report timestamp, epoch seconds
      */
     public AbstractReport(Properties config, String from, String to) {
         Date startDT = getUTC(from);
@@ -38,6 +48,26 @@ abstract class AbstractReport {
         this.from = startDT.getTime() / 1000;
         this.to = endDT.getTime() / 1000;
         this.config = config;
+
+        this.messagesDatabase = new MongoMessagesDatabase(
+                config.getProperty("messages.mongo.url"),
+                config.getProperty("messages.mongo.database"),
+                config.getProperty("messages.mongo.collection"));
+
+        FileInputStream inputStream;
+        try {
+            inputStream = new FileInputStream(getTemplateName());
+        } catch (FileNotFoundException e) {
+            logger.error("Cannot find Excel template file!", e);
+            throw new RuntimeException("Cannot find Excel template file!", e);
+        }
+
+        try {
+            workbook = new XSSFWorkbook(inputStream);
+        } catch (IOException e) {
+            logger.error("Cannot open Excel template file!", e);
+            throw new RuntimeException("Cannot open Excel template file!", e);
+        }
     }
 
     private Date getUTC(String date) {
@@ -47,14 +77,16 @@ abstract class AbstractReport {
 
     abstract void generateReport(String fileName);
 
+    abstract String getTemplateName();
+
     /**
      * Take SCAC from srcAddress.
-     *
+     * <p>
      * srcAddress looks like amtk.l.amtk.5:itc
      * SCAC should be AMTK-5
      *
-     * @param srcAddress    srcAddress
-     * @return              SCAC
+     * @param srcAddress srcAddress
+     * @return SCAC
      */
     protected String getLocoIdFromSrcAddressString(String srcAddress) {
         if (srcAddress == null || srcAddress.isEmpty())
@@ -121,9 +153,11 @@ abstract class AbstractReport {
         final String srcAddress;
         TrainStatus status = TrainStatus.UNKNOWN;
         String trainId = "";
+        long routeStart = 0;
         Document disengagedMessage;
         Document last2080;
         Document first2010;
+        List<Document> rowsCDF = new ArrayList<>();
 
         Train(String srcAddress) {
             this.srcAddress = srcAddress;

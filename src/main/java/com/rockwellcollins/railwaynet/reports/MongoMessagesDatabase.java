@@ -10,13 +10,14 @@ import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.*;
 
 import static com.mongodb.client.model.Filters.*;
 
 public class MongoMessagesDatabase {
+
+    public static final String FIELD_TRAIN_ID = "trainID";
+
     private static final Logger logger = LoggerFactory.getLogger(MongoMessagesDatabase.class);
 
     private final MongoCollection<Document> messages;
@@ -29,7 +30,7 @@ public class MongoMessagesDatabase {
         messages = reportsDB.getCollection(collection);
     }
 
-    public Iterator<Document> getCursor(long startDate, long endDate, int type, String destAddress) {
+    public Iterator<Document> getCursor(long startDate, long endDate, int type, String[] destAddresses) {
         logger.debug("Looking for messages ... ");
         logger.debug("Type: " + type);
         logger.debug("Start: " + startDate + ", end: " + endDate);
@@ -42,8 +43,8 @@ public class MongoMessagesDatabase {
         conditions.add(gt("time", startDate));
         conditions.add(lt("time", endDate));
         conditions.add(eq("idType", type));
-        if (destAddress != null)
-            conditions.add(in("destAddress", destAddress));
+        if (destAddresses != null)
+            conditions.add(in("destAddress", destAddresses));
         Bson filter = and(conditions);
 
         logger.debug("Filter is ready, running request to Mongo...");

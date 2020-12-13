@@ -56,6 +56,15 @@ public class InitFailedReport extends AbstractReport {
                 train.last2080 = null;
                 train.status = TrainStatus.UNKNOWN;
             }
+            if (locoState.equals("CUT_OUT")) {
+                logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
+                train.first2010 = null;
+                train.last2080 = null;
+                train.status = TrainStatus.UNKNOWN;
+            }
         }
     }
 
@@ -108,15 +117,12 @@ public class InitFailedReport extends AbstractReport {
     void generateReport(String fileName) {
         logger.info("Generating Init Failed Report");
 
-        MongoMessagesDatabase messagesDatabase = new MongoMessagesDatabase(
-                config.getProperty("messages.mongo.url"),
-                config.getProperty("messages.mongo.database"),
-                config.getProperty("messages.mongo.collection")
-        );
-
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to, 2080, "amtk.b:cibos");
-        Iterator<Document> messages2010 = messagesDatabase.getCursor(this.from, this.to, 2010, "amtk.b:cibos");
-        Iterator<Document> messages2005 = messagesDatabase.getCursor(this.from, this.to, 2005, "amtk.b:cibos");
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to,
+                2080, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2010 = messagesDatabase.getCursor(this.from, this.to,
+                2010, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2005 = messagesDatabase.getCursor(this.from, this.to,
+                2005, new String[]{"amtk.b:cibos"});
 
         List<Document> rows2080 = new ArrayList<>();
         List<Document> rows2010 = new ArrayList<>();
@@ -186,22 +192,6 @@ public class InitFailedReport extends AbstractReport {
 
         logger.debug("Number of records: " + rows2080.size());
 
-        FileInputStream inputStream;
-        try {
-            inputStream = new FileInputStream("Failed_Init_Report_template.xlsx");
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            return;
-        }
-
-        XSSFWorkbook workbook;
-        try {
-            workbook = new XSSFWorkbook(inputStream);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
-        }
-
         XSSFSheet eachSheet = workbook.getSheet("Failed Initializations.L");
         if (eachSheet == null) {
             throw new RuntimeException("Excel sheet not found!");
@@ -251,4 +241,7 @@ public class InitFailedReport extends AbstractReport {
         }
     }
 
+    String getTemplateName() {
+        return "Failed_Init_Report_template.xlsx";
+    }
 }

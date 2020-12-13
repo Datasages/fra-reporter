@@ -47,6 +47,13 @@ public class ReportsGenerator {
             s3Repository.upload(reportFileName);
             mongo.insertMonthlyReport(MongoReportsDatabase.LOCO_POSITION_REPORT, year, targetMonth, reportFileName);
         }
+        if (mongo.noMonthlyReport(MongoReportsDatabase.ENFORCEMENT_REPORT, year, targetMonth)) {
+            logger.debug("Monthly Enforcement Report doesn't exist, generating new one");
+            String reportFileName = "Monthly_AMTK_PTC_Loco_Enforcement_Report_" + year + "_" + targetMonth + ".xlsx";
+            new EnforcementReport(config, startMonthly, endMonthly).generateReport(reportFileName);
+            s3Repository.upload(reportFileName);
+            mongo.insertMonthlyReport(MongoReportsDatabase.ENFORCEMENT_REPORT, year, targetMonth, reportFileName);
+        }
         /*
         if (mongo.noMonthlyReport(MongoReportsDatabase.ENFORCEMENT_REPORT, year, targetMonth)) {
             logger.debug("Monthly Enforcement Report doesn't exist, generating new one");

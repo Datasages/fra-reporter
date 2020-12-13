@@ -9,7 +9,6 @@ import java.util.*;
 
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 public class PositionReport extends AbstractReport {
 
@@ -17,7 +16,7 @@ public class PositionReport extends AbstractReport {
 
     public static final int EXCEL_CDF_START_ROW = 5;
     public static final int EXCEL_COVER_ROW = 14;
-    public static final String FIELD_TRAIN_ID = "trainID";
+    public static final int SECONDS_IN_TWO_DAYS = 60 * 60 * 24 * 2;
 
     public PositionReport(Properties config, String from, String to) {
         super(config, from, to);
@@ -49,7 +48,7 @@ public class PositionReport extends AbstractReport {
             String scac = getScacFromSrcAddress(record.getString("srcAddress"));
 
             int columnCount = 0;
-            row.createCell(columnCount++).setCellValue(record.getString(FIELD_TRAIN_ID));
+            row.createCell(columnCount++).setCellValue(record.getString(MongoMessagesDatabase.FIELD_TRAIN_ID));
             row.createCell(columnCount++).setCellValue(locoID);
             row.createCell(columnCount++).setCellValue(scac);
             row.createCell(columnCount++).setCellValue(record.getString("dateUTC"));
@@ -76,7 +75,7 @@ public class PositionReport extends AbstractReport {
             String locoID = getLocoIdFromSrcAddressString(record.getString("srcAddress"));
             String scac = getScacFromSrcAddress(record.getString("srcAddress"));
 
-            cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get(FIELD_TRAIN_ID));
+            cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get(MongoMessagesDatabase.FIELD_TRAIN_ID));
             cdfSheetRow.createCell(columnCount++).setCellValue(locoID);
             cdfSheetRow.createCell(columnCount++).setCellValue(scac);
             cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get("dateUTC"));
@@ -96,24 +95,7 @@ public class PositionReport extends AbstractReport {
     private void makeExcel(String fileName, SortedMap<Integer, Document> rowsNotActive, List<Document> rowsCDF) {
         logger.debug("Creating Excel document");
 
-        FileInputStream inputStream;
-        try {
-            inputStream = new FileInputStream("Position_Report_template.xlsx");
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            return;
-        }
-
-        XSSFWorkbook workbook;
-        try {
-            workbook = new XSSFWorkbook(inputStream);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
-        }
-
         XSSFSheet coverSheet = workbook.getSheet("Cover Sheet");
-
         fillNotActiveSheet(workbook.getSheet("Summary Of Locos Not Active"), rowsNotActive);
         fillCDFSheet(workbook.getSheet("Summary Of Locos with C and F"), rowsCDF);
 
@@ -129,7 +111,8 @@ public class PositionReport extends AbstractReport {
     }
 
     private void process2003(Document message, Map<String, Train> trains,
-                             SortedMap<Integer, Document> rowsNotActive) {
+                             SortedMap<Integer, Document> rowsNotActive,
+                             List<Document> rowsCDF) {
         if (message == null)
             return;
 
@@ -137,21 +120,30 @@ public class PositionReport extends AbstractReport {
 
         if (train.disengagedMessage != null)
             // keep the old train ID in its DISENGAGED message
-            train.disengagedMessage.put(FIELD_TRAIN_ID, train.trainId);
+            train.disengagedMessage.put(MongoMessagesDatabase.FIELD_TRAIN_ID, train.trainId);
 
-        train.trainId = message.getString(FIELD_TRAIN_ID);
+        train.trainId = message.getString(MongoMessagesDatabase.FIELD_TRAIN_ID);
         logger.debug("Train " + train.srcAddress + " received ID " + train.trainId);
 
         if (train.status == TrainStatus.DISENGAGED) {
             // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
-            logger.debug("Not active train detected! srcAddress = " + train.srcAddress);
-            rowsNotActive.put(train.disengagedMessage.getInteger("time"), train.disengagedMessage);
+            if (message.getInteger("time") > this.from) {
+                logger.debug("Not active train detected! srcAddress = " + train.srcAddress);
+                rowsNotActive.put(train.disengagedMessage.getInteger("time"), train.disengagedMessage);
+            } else {
+                logger.debug("Not active train OF PREVIOUS period detected! Skipping. srcAddress = " + train.srcAddress);
+            }
             logger.debug("Number of Not Active: " + rowsNotActive.size());
+        }
+
+        if (message.getInteger("time") > this.from && !train.rowsCDF.isEmpty()) {
+            rowsCDF.addAll(train.rowsCDF);
+            train.rowsCDF.clear();
+            logger.debug("Copied CDF messages of train to the report. Total CDF now: " + rowsCDF.size());
         }
     }
 
-    private void process2080(Document message, Map<String, Train> trains,
-                             List<Document> rowsCDF) {
+    private void process2080(Document message, Map<String, Train> trains) {
         if (message == null)
             return;
 
@@ -165,9 +157,9 @@ public class PositionReport extends AbstractReport {
 
         String locoState = message.get("locomotiveState").toString();
         if (locoState.equals("CUT_OUT") || locoState.equals("FAILED")) {
-            message.put(FIELD_TRAIN_ID, train.trainId);
-            rowsCDF.add(message);
-            logger.debug("Number of CDF: " + rowsCDF.size());
+            message.put(MongoMessagesDatabase.FIELD_TRAIN_ID, train.trainId);
+            train.rowsCDF.add(message);
+            logger.debug("Adding CDF record to train collection: " + srcAddress);
         }
 
         String messageStatus = message.getString("locomotiveState");
@@ -181,14 +173,12 @@ public class PositionReport extends AbstractReport {
     public void generateReport(String fileName) {
         logger.info("Generating Position Reports");
 
-        MongoMessagesDatabase messagesDatabase = new MongoMessagesDatabase(
-                config.getProperty("messages.mongo.url"),
-                config.getProperty("messages.mongo.database"),
-                config.getProperty("messages.mongo.collection")
-        );
-
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to, 2080, "amtk.b:cibos");
-        Iterator<Document> messages2003 = messagesDatabase.getCursor(this.from, this.to, 2003, null);
+        // We start loading data from two days before the report period to collect
+        // messages of routes which started in the previous period and ended in this period
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from - SECONDS_IN_TWO_DAYS, this.to,
+                2080, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2003 = messagesDatabase.getCursor(this.from - SECONDS_IN_TWO_DAYS, this.to,
+                2003, null);
 
         SortedMap<Integer, Document> rowsNotActive = new TreeMap<>();
         List<Document> rowsCDF = new ArrayList<>();
@@ -214,13 +204,13 @@ public class PositionReport extends AbstractReport {
             long m2080time = getMessageTime(m2080);
 
             if (m2003time <= m2080time) {
-                process2003(m2003, trains, rowsNotActive);
+                process2003(m2003, trains, rowsNotActive, rowsCDF);
                 if (messages2003.hasNext())
                     m2003 = messages2003.next();
                 else
                     m2003 = null;
             } else {
-                process2080(m2080, trains, rowsCDF);
+                process2080(m2080, trains);
                 if (messages2080.hasNext())
                     m2080 = messages2080.next();
                 else
@@ -232,4 +222,7 @@ public class PositionReport extends AbstractReport {
         makeExcel(fileName, rowsNotActive, rowsCDF);
     }
 
+    String getTemplateName() {
+        return "Position_Report_template.xlsx";
+    }
 }
