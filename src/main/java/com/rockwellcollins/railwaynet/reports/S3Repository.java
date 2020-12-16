@@ -31,7 +31,7 @@ public class S3Repository {
                 .build();
     }
 
-    public void upload(String fileName) {
+    public void upload(String fileName, String title, String type, int year, int term) {
         logger.debug("Uploading " + fileName + " to S3");
 
         if (! new File(fileName).exists()) {
@@ -42,7 +42,10 @@ public class S3Repository {
         PutObjectRequest request = new PutObjectRequest(bucketName, fileName, new File(fileName));
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        metadata.addUserMetadata("title", "someTitle");
+        metadata.addUserMetadata("title", title);
+        metadata.addUserMetadata("type", type);
+        metadata.addUserMetadata("year", String.valueOf(year));
+        metadata.addUserMetadata("term", String.valueOf(term));
         request.setMetadata(metadata);
         this.s3client.putObject(request);
     }

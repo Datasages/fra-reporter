@@ -4,12 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
-import java.util.logging.LogManager;
-
-import static com.rockwellcollins.railwaynet.reports.ReportsGenerator.generateReports;
 
 public class Starter {
 
@@ -56,12 +51,14 @@ public class Starter {
 
         readConfig(args);
 
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
+        new InitFailedReport(config).generateMonthlyReport();
+        new InitFailedReport(config).generateQuarterlyReport();
 
-        Integer currentYear = now.getYear();
-        Integer currentMonth = now.getMonthValue();
+        new PositionReport(config).generateMonthlyReport();
+        new PositionReport(config).generateQuarterlyReport();
 
-        generateReports(currentYear, currentMonth, config);
+        new EnforcementReport(config).generateMonthlyReport();
+        new EnforcementReport(config).generateQuarterlyReport();
 
         logger.info("STROLR reports generator ended");
     }

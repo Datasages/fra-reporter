@@ -16,14 +16,14 @@ public class EnforcementReport extends AbstractReport {
     public static final String FIELD_EMERGENCY_ENFORCEMENT_SCAC = "emergencyEnforcementScac";
     public static final String FIELD_TARGET_TYPE = "targetType";
 
-    public EnforcementReport(Properties config, String from, String to) {
-        super(config, from, to);
+    public EnforcementReport(Properties config) {
+        super(config);
     }
 
-    public void generateReport(String fileName) {
+    public void generateReport(String fileName, long from, long to) {
         logger.info("Generating Enforcement Reports");
 
-        Iterator<Document> messages2083 = messagesDatabase.getCursor(this.from, this.to,
+        Iterator<Document> messages2083 = messagesDatabase.getCursor(from, to,
                 2083, new String[]{"amtk.b:gb.nec", "amtk.b:gb.me"});
 
         List<Document> enforcements = new ArrayList<>();
@@ -34,6 +34,16 @@ public class EnforcementReport extends AbstractReport {
         }
 
         makeExcel(fileName, enforcements, stats);
+    }
+
+    @Override
+    protected String getReportType() {
+        return MongoReportsDatabase.ENFORCEMENT_REPORT;
+    }
+
+    @Override
+    protected String getReportName() {
+        return "Enforcement Report";
     }
 
     private void fillSummarySheet(XSSFSheet sheet, List<Document> enforcements) {
@@ -110,7 +120,7 @@ public class EnforcementReport extends AbstractReport {
             row.createCell(columnCount++).setCellValue(message.getString("startTargetTrackName"));
             row.createCell(columnCount++).setCellValue(message.getString("startTargetScac"));
             row.createCell(columnCount++).setCellValue(message.getInteger("startTargetSubdivDistrictId"));
-            row.createCell(columnCount++).setCellValue(0);  // Start Position Uncertainity
+            row.createCell(columnCount++).setCellValue(0);  // Start Position Uncertainty
 
             row.createCell(columnCount++).setCellValue(message.getInteger("warningDistance"));
             row.createCell(columnCount++).setCellValue(message.getString("warningTravelDirection"));
@@ -213,4 +223,5 @@ public class EnforcementReport extends AbstractReport {
     String getTemplateName() {
         return "Enforcement_Report_template.xlsx";
     }
+
 }

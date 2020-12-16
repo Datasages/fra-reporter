@@ -5,14 +5,13 @@ import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.print.Doc;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.*;
-import java.util.function.Predicate;
 
 abstract class AbstractReport {
 
@@ -20,39 +19,30 @@ abstract class AbstractReport {
 
     protected final Properties config;
 
-    /**
-     * start of report timestamp, epoch seconds
-     */
-    protected final long from;
-
-    /**
-     * end of report timestamp, epoch seconds
-     */
-    protected final long to;
-
     protected final MongoMessagesDatabase messagesDatabase;
 
     protected final XSSFWorkbook workbook;
+
+    protected final S3Repository s3Repository;
+
+    private final LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
+
+    private final MongoReportsDatabase mongo;
 
     /**
      * Create new report generator
      *
      * @param config configuration properties
-     * @param from   start of report timestamp, epoch seconds
-     * @param to     end of report timestamp, epoch seconds
      */
-    public AbstractReport(Properties config, String from, String to) {
-        Date startDT = getUTC(from);
-        Date endDT = getUTC(to);
-
-        this.from = startDT.getTime() / 1000;
-        this.to = endDT.getTime() / 1000;
+    public AbstractReport(Properties config) {
         this.config = config;
 
         this.messagesDatabase = new MongoMessagesDatabase(
                 config.getProperty("messages.mongo.url"),
                 config.getProperty("messages.mongo.database"),
                 config.getProperty("messages.mongo.collection"));
+
+        mongo = new MongoReportsDatabase(config);
 
         FileInputStream inputStream;
         try {
@@ -68,6 +58,8 @@ abstract class AbstractReport {
             logger.error("Cannot open Excel template file!", e);
             throw new RuntimeException("Cannot open Excel template file!", e);
         }
+
+        this.s3Repository = new S3Repository(config);
     }
 
     private Date getUTC(String date) {
@@ -75,7 +67,85 @@ abstract class AbstractReport {
         return new Date(ldt.atOffset(ZoneOffset.UTC).toInstant().toEpochMilli());
     }
 
-    abstract void generateReport(String fileName);
+    protected abstract void generateReport(String fileName, long from, long to);
+
+    private String getStartOfMonth() {
+        int year = now.getYear();
+        int currentMonth = now.getMonthValue();
+
+        if (currentMonth > 1) {
+            String month = currentMonth > 10 ? String.valueOf(currentMonth - 1) : "0" + (currentMonth - 1);
+            return year + "-" + month + "-01";
+        }
+
+        return (year - 1) + "-12-01";
+    }
+
+    private String getEndOfMonth() {
+        int year = now.getYear();
+        int currentMonth = now.getMonthValue();
+
+        String month = currentMonth > 9 ? String.valueOf(currentMonth) : "0" + currentMonth;
+        return year + "-" + month + "-01";
+    }
+
+    private String getStartOfQuarter() {
+        int currentMonth = now.getMonthValue();
+        int year = now.getYear();
+
+        if (currentMonth < 4) return (year - 1) + "-10-01";
+        if (currentMonth < 7) return year + "-01-01";
+        if (currentMonth < 10) return year + "-04-01";
+        return year + "-07-01";
+    }
+
+    private String getEndOfQuarter() {
+        int currentMonth = now.getMonthValue();
+        int year = now.getYear();
+
+        if (currentMonth < 4) return year + "-01-01";
+        if (currentMonth < 7) return year + "-04-01";
+        if (currentMonth < 10) return year + "-07-01";
+        return year + "-10-01";
+    }
+
+    public void generateMonthlyReport() {
+        String reportFileName = UUID.randomUUID().toString() + ".xls";
+        Date startDT = getUTC(getStartOfMonth());
+        Date endDT = getUTC(getEndOfMonth());
+
+        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
+
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        cal.setTime(startDT);
+
+        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(),
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH));
+
+        mongo.insertMonthlyReport(getReportType(),
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), reportFileName);
+    }
+
+    protected abstract String getReportType();
+
+    protected abstract String getReportName();
+
+    public void generateQuarterlyReport() {
+        String reportFileName = UUID.randomUUID().toString() + ".xls";
+        Date startDT = getUTC(getStartOfQuarter());
+        Date endDT = getUTC(getEndOfQuarter());
+
+        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
+
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        cal.setTime(startDT);
+
+        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(),
+                cal.get(Calendar.YEAR), (cal.get(Calendar.MONTH) / 3) + 1);
+
+        mongo.insertMonthlyReport(getReportType(),
+                cal.get(Calendar.YEAR), (cal.get(Calendar.MONTH) / 3) + 1, reportFileName);
+    }
 
     abstract String getTemplateName();
 
@@ -98,49 +168,6 @@ abstract class AbstractReport {
         return parts[2] + "-" + parts[3];
     }
 
-    /**
-     * A predicate to check if a message belong to a train from the list.
-     * It is used to ignore messages from next period.
-     */
-    protected static class CheckRoute implements Predicate<Document> {
-
-        private final Map<String, PositionReport.Train> trains;
-
-        CheckRoute(Map<String, PositionReport.Train> trains) {
-            this.trains = trains;
-        }
-
-        @Override
-        public boolean test(Document message) {
-            String trainID = message.getString("trainID");
-            if (trainID == null) return false;
-            PositionReport.Train train = trains.get(message.getString("srcAddress"));
-            if (train == null) return false;
-            return train.trainId.equals(trainID);
-        }
-    }
-
-    /**
-     * Remove messages of next periods from the list
-     *
-     * @param messages Messages list to update
-     */
-    protected void removeNextPeriod(List<Document> messages) {
-        Map<String, PositionReport.Train> trains = new HashMap<>();
-
-        for (Document record : messages) {
-            String srcAddress = record.getString("srcAddress");
-            PositionReport.Train train = trains.get(srcAddress);
-
-            if (train == null) {
-                train = new PositionReport.Train(srcAddress);
-                trains.put(srcAddress, train);
-            }
-        }
-
-        messages.removeIf(new PositionReport.CheckRoute(trains));
-    }
-
     protected enum TrainStatus {
         UNKNOWN,
         DISENGAGED,
@@ -153,7 +180,6 @@ abstract class AbstractReport {
         final String srcAddress;
         TrainStatus status = TrainStatus.UNKNOWN;
         String trainId = "";
-        long routeStart = 0;
         Document disengagedMessage;
         Document last2080;
         Document first2010;

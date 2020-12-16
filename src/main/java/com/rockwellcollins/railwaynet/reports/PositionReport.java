@@ -18,8 +18,8 @@ public class PositionReport extends AbstractReport {
     public static final int EXCEL_COVER_ROW = 14;
     public static final int SECONDS_IN_TWO_DAYS = 60 * 60 * 24 * 2;
 
-    public PositionReport(Properties config, String from, String to) {
-        super(config, from, to);
+    public PositionReport(Properties config) {
+        super(config);
     }
 
     /**
@@ -112,7 +112,7 @@ public class PositionReport extends AbstractReport {
 
     private void process2003(Document message, Map<String, Train> trains,
                              SortedMap<Integer, Document> rowsNotActive,
-                             List<Document> rowsCDF) {
+                             List<Document> rowsCDF, long from) {
         if (message == null)
             return;
 
@@ -127,7 +127,7 @@ public class PositionReport extends AbstractReport {
 
         if (train.status == TrainStatus.DISENGAGED) {
             // TrainID has been changed but train is in DISENGAGED mode and never been ACTIVE! Report this!
-            if (message.getInteger("time") > this.from) {
+            if (message.getInteger("time") > from) {
                 logger.debug("Not active train detected! srcAddress = " + train.srcAddress);
                 rowsNotActive.put(train.disengagedMessage.getInteger("time"), train.disengagedMessage);
             } else {
@@ -136,7 +136,7 @@ public class PositionReport extends AbstractReport {
             logger.debug("Number of Not Active: " + rowsNotActive.size());
         }
 
-        if (message.getInteger("time") > this.from && !train.rowsCDF.isEmpty()) {
+        if (message.getInteger("time") > from && !train.rowsCDF.isEmpty()) {
             rowsCDF.addAll(train.rowsCDF);
             train.rowsCDF.clear();
             logger.debug("Copied CDF messages of train to the report. Total CDF now: " + rowsCDF.size());
@@ -170,14 +170,14 @@ public class PositionReport extends AbstractReport {
         }
     }
 
-    public void generateReport(String fileName) {
+    public void generateReport(String fileName, long from, long to) {
         logger.info("Generating Position Reports");
 
         // We start loading data from two days before the report period to collect
         // messages of routes which started in the previous period and ended in this period
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from - SECONDS_IN_TWO_DAYS, this.to,
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(from - SECONDS_IN_TWO_DAYS, to,
                 2080, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2003 = messagesDatabase.getCursor(this.from - SECONDS_IN_TWO_DAYS, this.to,
+        Iterator<Document> messages2003 = messagesDatabase.getCursor(from - SECONDS_IN_TWO_DAYS, to,
                 2003, null);
 
         SortedMap<Integer, Document> rowsNotActive = new TreeMap<>();
@@ -204,7 +204,7 @@ public class PositionReport extends AbstractReport {
             long m2080time = getMessageTime(m2080);
 
             if (m2003time <= m2080time) {
-                process2003(m2003, trains, rowsNotActive, rowsCDF);
+                process2003(m2003, trains, rowsNotActive, rowsCDF, from);
                 if (messages2003.hasNext())
                     m2003 = messages2003.next();
                 else
@@ -222,7 +222,18 @@ public class PositionReport extends AbstractReport {
         makeExcel(fileName, rowsNotActive, rowsCDF);
     }
 
+    @Override
+    protected String getReportType() {
+        return MongoReportsDatabase.LOCO_POSITION_REPORT;
+    }
+
+    @Override
+    protected String getReportName() {
+        return "Position Report";
+    }
+
     String getTemplateName() {
         return "Position_Report_template.xlsx";
     }
+
 }

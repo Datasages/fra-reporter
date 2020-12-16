@@ -2,7 +2,6 @@ package com.rockwellcollins.railwaynet.reports;
 
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +13,8 @@ public class InitFailedReport extends AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(InitFailedReport.class);
 
-    public InitFailedReport(Properties config, String from, String to) {
-        super(config, from, to);
+    public InitFailedReport(Properties config) {
+        super(config);
     }
 
     private void process2010(Document message, Map<String, Train> trains,
@@ -114,15 +113,12 @@ public class InitFailedReport extends AbstractReport {
     }
 
     @Override
-    void generateReport(String fileName) {
+    protected void generateReport(String fileName, long from, long to) {
         logger.info("Generating Init Failed Report");
 
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(this.from, this.to,
-                2080, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2010 = messagesDatabase.getCursor(this.from, this.to,
-                2010, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2005 = messagesDatabase.getCursor(this.from, this.to,
-                2005, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to,2080, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2010 = messagesDatabase.getCursor(from, to,2010, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2005 = messagesDatabase.getCursor(from, to,2005, new String[]{"amtk.b:cibos"});
 
         List<Document> rows2080 = new ArrayList<>();
         List<Document> rows2010 = new ArrayList<>();
@@ -185,6 +181,16 @@ public class InitFailedReport extends AbstractReport {
         makeExcel(fileName, rows2080, rows2010, rowsLast);
     }
 
+    @Override
+    protected String getReportType() {
+        return MongoReportsDatabase.INIT_FAILED_REPORT;
+    }
+
+    @Override
+    protected String getReportName() {
+        return "Init Failed Report";
+    }
+
     private void makeExcel(String fileName,
                            List<Document> rows2080, List<Document> rows2010,
                            List<Document> rowsLast) {
@@ -244,4 +250,5 @@ public class InitFailedReport extends AbstractReport {
     String getTemplateName() {
         return "Failed_Init_Report_template.xlsx";
     }
+
 }
