@@ -24,12 +24,6 @@ public class InitFailedReport extends AbstractReport {
         if (message == null)
             return;
 
-        String srcAddress = message.getString("srcAddress");
-        if (srcAddress.startsWith("amtk.")) {
-            // we only are interested in foreign locomotives
-            return;
-        }
-
         Train train = processTrain(message, trains);
 
         if (train.first2010 == null) {
@@ -72,12 +66,6 @@ public class InitFailedReport extends AbstractReport {
         if (message == null)
             return;
 
-        String srcAddress = message.getString("srcAddress");
-        if (srcAddress.startsWith("amtk.")) {
-            // we only are interested in foreign locomotives
-            return;
-        }
-
         Train train = processTrain(message, trains);
         train.status = TrainStatus.INITIALIZING;
         train.first2010 = null;
@@ -89,12 +77,6 @@ public class InitFailedReport extends AbstractReport {
 
         if (message == null)
             return;
-
-        String srcAddress = message.getString("srcAddress");
-        if (srcAddress.startsWith("amtk.")) {
-            // we only are interested in foreign locomotives
-            return;
-        }
 
         Train train = processTrain(message, trains);
         train.last2080 = message;
@@ -116,9 +98,9 @@ public class InitFailedReport extends AbstractReport {
     protected void generateReport(String fileName, long from, long to) {
         logger.info("Generating Init Failed Report");
 
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to,2080, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2010 = messagesDatabase.getCursor(from, to,2010, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2005 = messagesDatabase.getCursor(from, to,2005, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to, 2080, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2010 = messagesDatabase.getCursor(from, to, 2010, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages2005 = messagesDatabase.getCursor(from, to, 2005, new String[]{"amtk.b:cibos"});
 
         List<Document> rows2080 = new ArrayList<>();
         List<Document> rows2010 = new ArrayList<>();
@@ -198,10 +180,19 @@ public class InitFailedReport extends AbstractReport {
 
         logger.debug("Number of records: " + rows2080.size());
 
-        XSSFSheet eachSheet = workbook.getSheet("Failed Initializations.L");
-        if (eachSheet == null) {
-            throw new RuntimeException("Excel sheet not found!");
+        XSSFSheet nonAmtrakSheet = workbook.getSheet("Non-Amtrak Locomotives");
+        XSSFSheet amtrakSheet = workbook.getSheet("Amtrak Locomotives");
+
+        if (nonAmtrakSheet == null) {
+            throw new RuntimeException("Non-Amtrak sheet not found!");
         }
+
+        if (amtrakSheet == null) {
+            throw new RuntimeException("Amtrak sheet not found!");
+        }
+
+        int nonAmtrakRowNum = 2;
+        int amtrakRowNum = 2;
 
         for (int i = 0; i < rows2010.size(); i++) {
             Document message2010 = rows2010.get(i);
@@ -220,8 +211,19 @@ public class InitFailedReport extends AbstractReport {
 
             int columnCount = 0;
 
-            Row eachSheetRow = eachSheet.createRow(i + 2);
-            eachSheetRow.createCell(columnCount++).setCellValue(getLocoIdFromSrcAddressString(message2080.getString("srcAddress")));
+            String srcAddress =
+                    message2010 != null ? message2010.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
+                            message2080 != null ? message2080.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
+                                    messageLast != null ? messageLast.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
+                                            null;
+
+            Row eachSheetRow;
+            if (srcAddress != null && srcAddress.startsWith("amtk."))
+                eachSheetRow = amtrakSheet.createRow(amtrakRowNum++);
+            else
+                eachSheetRow = nonAmtrakSheet.createRow(nonAmtrakRowNum++);
+
+            eachSheetRow.createCell(columnCount++).setCellValue(getLocoIdFromSrcAddressString(message2080.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS)));
             eachSheetRow.createCell(columnCount++).setCellValue(message2080.getDouble("headEndMilepost1000"));
             eachSheetRow.createCell(columnCount++).setCellValue(message2080.getString("headEndTrackName"));
             eachSheetRow.createCell(columnCount++).setCellValue(message2080.getString("headEndScac"));

@@ -64,7 +64,7 @@ public class EnforcementReport extends AbstractReport {
             row.createCell(columnCount++).setCellValue(message.getString("timeUTC"));
             row.createCell(columnCount++).setCellValue(message.getString(MongoMessagesDatabase.FIELD_TRAIN_ID));
 
-            String locoID = getLocoIdFromSrcAddressString(message.getString("srcAddress"));
+            String locoID = getLocoIdFromSrcAddressString(message.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
             row.createCell(columnCount++).setCellValue(locoID);
 
 
@@ -101,7 +101,7 @@ public class EnforcementReport extends AbstractReport {
             row.createCell(columnCount++).setCellValue(message.getString("timeUTC"));
             row.createCell(columnCount++).setCellValue(message.getString(MongoMessagesDatabase.FIELD_TRAIN_ID));
 
-            String locoID = getLocoIdFromSrcAddressString(message.getString("srcAddress"));
+            String locoID = getLocoIdFromSrcAddressString(message.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
             row.createCell(columnCount++).setCellValue(locoID);
 
             row.createCell(columnCount++).setCellValue(message.getString("warningEnforcementType"));

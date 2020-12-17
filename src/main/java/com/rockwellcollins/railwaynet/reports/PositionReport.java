@@ -44,8 +44,8 @@ public class PositionReport extends AbstractReport {
         for (Document record : messages.values()) {
             Row row = notActiveSheet.createRow(notActiveRowCount++);
 
-            String locoID = getLocoIdFromSrcAddressString(record.getString("srcAddress"));
-            String scac = getScacFromSrcAddress(record.getString("srcAddress"));
+            String locoID = getLocoIdFromSrcAddressString(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
+            String scac = getScacFromSrcAddress(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
 
             int columnCount = 0;
             row.createCell(columnCount++).setCellValue(record.getString(MongoMessagesDatabase.FIELD_TRAIN_ID));
@@ -72,8 +72,8 @@ public class PositionReport extends AbstractReport {
 
             int columnCount = 0;
 
-            String locoID = getLocoIdFromSrcAddressString(record.getString("srcAddress"));
-            String scac = getScacFromSrcAddress(record.getString("srcAddress"));
+            String locoID = getLocoIdFromSrcAddressString(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
+            String scac = getScacFromSrcAddress(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
 
             cdfSheetRow.createCell(columnCount++).setCellValue((String) record.get(MongoMessagesDatabase.FIELD_TRAIN_ID));
             cdfSheetRow.createCell(columnCount++).setCellValue(locoID);
@@ -147,7 +147,7 @@ public class PositionReport extends AbstractReport {
         if (message == null)
             return;
 
-        String srcAddress = message.getString("srcAddress");
+        String srcAddress = message.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS);
         if (srcAddress.startsWith("amtk.")) {
             // we only are interested in foreign locomotives
             return;

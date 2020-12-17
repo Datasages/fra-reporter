@@ -2,7 +2,6 @@ package com.rockwellcollins.railwaynet.reports;
 
 import org.bson.Document;
 
-import javax.print.Doc;
 import java.text.SimpleDateFormat;
 import java.util.Iterator;
 import java.util.Map;

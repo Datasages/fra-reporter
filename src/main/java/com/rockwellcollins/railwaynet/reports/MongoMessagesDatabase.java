@@ -17,6 +17,7 @@ import static com.mongodb.client.model.Filters.*;
 public class MongoMessagesDatabase {
 
     public static final String FIELD_TRAIN_ID = "trainID";
+    public static final String FIELD_SRC_ADDRESS = "srcAddress";
 
     private static final Logger logger = LoggerFactory.getLogger(MongoMessagesDatabase.class);
 

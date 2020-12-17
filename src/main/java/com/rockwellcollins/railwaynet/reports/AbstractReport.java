@@ -110,20 +110,24 @@ abstract class AbstractReport {
     }
 
     public void generateMonthlyReport() {
-        String reportFileName = UUID.randomUUID().toString() + ".xls";
+
         Date startDT = getUTC(getStartOfMonth());
         Date endDT = getUTC(getEndOfMonth());
-
-        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.setTime(startDT);
+        int year = cal.get(Calendar.YEAR);
+        int month = cal.get(Calendar.MONTH);
 
-        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(),
-                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH));
+        if (mongo.monthlyReportExists(getReportType(), year, month)) {
+            logger.info("Monthly report of type " + getReportType() + " for " + month + "/" + year + " already exists. Skipping.");
+            return;
+        }
 
-        mongo.insertMonthlyReport(getReportType(),
-                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), reportFileName);
+        String reportFileName = UUID.randomUUID().toString() + ".xlsx";
+
+        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
+        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
+        mongo.insertMonthlyReport(getReportType(), year, month, reportFileName);
     }
 
     protected abstract String getReportType();
@@ -135,16 +139,20 @@ abstract class AbstractReport {
         Date startDT = getUTC(getStartOfQuarter());
         Date endDT = getUTC(getEndOfQuarter());
 
-        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.setTime(startDT);
 
-        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(),
-                cal.get(Calendar.YEAR), (cal.get(Calendar.MONTH) / 3) + 1);
+        int year = cal.get(Calendar.YEAR);
+        int quarter = (cal.get(Calendar.MONTH) / 3) + 1;
 
-        mongo.insertMonthlyReport(getReportType(),
-                cal.get(Calendar.YEAR), (cal.get(Calendar.MONTH) / 3) + 1, reportFileName);
+        if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
+            logger.info("Monthly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");
+            return;
+        }
+
+        this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
+        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(), year, quarter);
+        mongo.insertQuarterlyReport(getReportType(), year, quarter, reportFileName);
     }
 
     abstract String getTemplateName();

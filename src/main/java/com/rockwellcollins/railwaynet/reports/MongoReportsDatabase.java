@@ -47,7 +47,7 @@ public class MongoReportsDatabase {
         reports = reportsDB.getCollection(config.getProperty("reports.mongo.collection"));
     }
 
-    private boolean noReport(String type, Integer year, Integer month, String period) {
+    private boolean reportExists(String type, Integer year, Integer month, String period) {
         List<Bson> conditions = new ArrayList<>();
         conditions.add(eq(FIELD_TYPE, type));
         conditions.add(eq(FIELD_PERIOD, period));
@@ -56,15 +56,15 @@ public class MongoReportsDatabase {
 
         Bson filter = and(conditions);
         FindIterable<Document> iterable = reports.find(filter);
-        return iterable.first() == null;
+        return iterable.first() != null;
     }
 
-    public boolean noMonthlyReport(String type, Integer year, Integer month) {
-        return noReport(type, year, month, PERIOD_MONTH);
+    public boolean monthlyReportExists(String type, Integer year, Integer month) {
+        return reportExists(type, year, month, PERIOD_MONTH);
     }
 
-    public boolean noQuarterlyReport(String type, Integer year, Integer quarter) {
-        return noReport(type, year, quarter, PERIOD_QUARTER);
+    public boolean quarterlyReportExists(String type, Integer year, Integer quarter) {
+        return reportExists(type, year, quarter, PERIOD_QUARTER);
     }
 
     public void insertMonthlyReport(String type, Integer year, Integer month, String fileName) {
