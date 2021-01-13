@@ -1,1 +1,1 @@
-java -jar strolr2backoffice-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar strolrscheduler-1.0-SNAPSHOT-jar-with-dependencies.jar
