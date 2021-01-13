@@ -18,6 +18,8 @@ public class MongoMessagesDatabase {
 
     public static final String FIELD_TRAIN_ID = "trainID";
     public static final String FIELD_SRC_ADDRESS = "srcAddress";
+    public static final String FIELD_HEAD_END_SCAC = "headEndScac";
+    public static final String FIELD_REAR_END_SCAC = "rearEndScac";
 
     private static final Logger logger = LoggerFactory.getLogger(MongoMessagesDatabase.class);
 

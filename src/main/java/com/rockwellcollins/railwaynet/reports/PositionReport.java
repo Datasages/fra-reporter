@@ -38,11 +38,24 @@ public class PositionReport extends AbstractReport {
         return srcAddress.split("\\.")[0];
     }
 
-    private void fillNotActiveSheet(XSSFSheet notActiveSheet, SortedMap<Integer, Document> messages) {
+    private int fillNotActiveSheet(XSSFSheet notActiveSheet, SortedMap<Integer, Document> messages) {
         int notActiveRowCount = EXCEL_CDF_START_ROW;
 
+        int num = 0;
+
         for (Document record : messages.values()) {
+
+            String headEndScac = record.getString(MongoMessagesDatabase.FIELD_HEAD_END_SCAC);
+            String rearEndScac = record.getString(MongoMessagesDatabase.FIELD_REAR_END_SCAC);
+
+            if (headEndScac != null && !headEndScac.equals("AMTK") &&
+                    rearEndScac == null && !rearEndScac.equals("AMTK")) {
+                // we do not care about trains outside of AMTK
+                continue;
+            }
+
             Row row = notActiveSheet.createRow(notActiveRowCount++);
+            num++;
 
             String locoID = getLocoIdFromSrcAddressString(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
             String scac = getScacFromSrcAddress(record.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS));
@@ -62,6 +75,8 @@ public class PositionReport extends AbstractReport {
             row.createCell(columnCount++).setCellValue(record.getString("rearEndScac"));
             row.createCell(columnCount).setCellValue(record.getInteger("rearEndSubdivDistrictId"));
         }
+
+        return num;
     }
 
     private void fillCDFSheet(XSSFSheet cdfSheet, List<Document> messages) {
@@ -96,12 +111,12 @@ public class PositionReport extends AbstractReport {
         logger.debug("Creating Excel document");
 
         XSSFSheet coverSheet = workbook.getSheet("Cover Sheet");
-        fillNotActiveSheet(workbook.getSheet("Summary Of Locos Not Active"), rowsNotActive);
+        int notActiveNum = fillNotActiveSheet(workbook.getSheet("Summary Of Locos Not Active"), rowsNotActive);
         fillCDFSheet(workbook.getSheet("Summary Of Locos with C and F"), rowsCDF);
 
         Row coverRow = coverSheet.createRow(EXCEL_COVER_ROW - 1);
         coverRow.createCell(2).setCellValue(rowsCDF.size());
-        coverRow.createCell(0).setCellValue(rowsNotActive.size());
+        coverRow.createCell(0).setCellValue(notActiveNum);
 
         try (FileOutputStream outputStream = new FileOutputStream(fileName)) {
             workbook.write(outputStream);
