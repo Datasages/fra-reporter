@@ -116,7 +116,7 @@ abstract class AbstractReport {
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.setTime(startDT);
         int year = cal.get(Calendar.YEAR);
-        int month = cal.get(Calendar.MONTH);
+        int month = cal.get(Calendar.MONTH) + 1;    // adding 1 because in JSON we count months from 1 to 12
 
         if (mongo.monthlyReportExists(getReportType(), year, month)) {
             logger.info("Monthly report of type " + getReportType() + " for " + month + "/" + year + " already exists. Skipping.");
