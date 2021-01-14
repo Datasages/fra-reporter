@@ -50,10 +50,13 @@ public class InitFailedReport extends AbstractReport {
                 train.status = TrainStatus.UNKNOWN;
             }
             if (locoState.equals("CUT_OUT")) {
-                logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
+                if (message.getInteger("sendingReason") != 2) {
+                    // 2 = Crew initiated change—logoff, it is not a problem
+                    logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
+                    rows2010.add(train.first2010);
+                    rows2080.add(train.last2080);
+                    rowsLast.add(message);
+                }
                 train.first2010 = null;
                 train.last2080 = null;
                 train.status = TrainStatus.UNKNOWN;
