@@ -49,7 +49,7 @@ public class PositionReport extends AbstractReport {
             String rearEndScac = record.getString(MongoMessagesDatabase.FIELD_REAR_END_SCAC);
 
             if (headEndScac != null && !headEndScac.equals("AMTK") &&
-                    rearEndScac == null && !rearEndScac.equals("AMTK")) {
+                    rearEndScac != null && !rearEndScac.equals("AMTK")) {
                 // we do not care about trains outside of AMTK
                 continue;
             }
