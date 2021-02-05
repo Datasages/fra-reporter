@@ -191,6 +191,7 @@ abstract class AbstractReport {
         Document disengagedMessage;
         Document last2080;
         Document first2010;
+        Integer triggerTime = null;
         List<Document> rowsCDF = new ArrayList<>();
 
         Train(String srcAddress) {

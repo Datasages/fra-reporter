@@ -13,8 +13,11 @@ public class InitFailedReport extends AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(InitFailedReport.class);
 
+    private final int initTime;
+
     public InitFailedReport(Properties config) {
         super(config);
+        this.initTime = Integer.parseInt(config.getProperty("init.time"));
     }
 
     private void process2010(Document message, Map<String, Train> trains,
@@ -26,41 +29,61 @@ public class InitFailedReport extends AbstractReport {
 
         Train train = processTrain(message, trains);
 
+        if (train.status != TrainStatus.INITIALIZING) return;
+
         if (train.first2010 == null) {
             logger.trace(train.srcAddress + " first 2010");
             train.first2010 = message;
         }
 
-        String locoState = message.getString("locomotiveState").trim();
+        if (train.triggerTime == null) {
+            train.triggerTime = message.getInteger("time");
+            return;
+        }
 
-        if (train.status == TrainStatus.INITIALIZING) {
-            if (locoState.equals("DISENGAGED")) {
-                logger.trace(train.srcAddress + " 2010 DISENGAGED");
-                if (message.getInteger("time") - train.first2010.getInteger("time") >= 60 * 60) {
-                    // Init failed because of 60 minutes timeout
-                    logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
-                    rows2010.add(train.first2010);
-                    rows2080.add(train.last2080);
-                    rowsLast.add(message);
-                } else {
-                    logger.trace(train.srcAddress + " INIT SUCCESSFUL");
-                }
+        String locoState = message.getString(MongoReportsDatabase.FIELD_LOCOMOTIVE_STATE).trim();
+
+        if (locoState.equals(MongoReportsDatabase.LOCOMOTIVE_STATE_SELF_TEST) ||
+                locoState.equals(MongoReportsDatabase.LOCOMOTIVE_STATE_SELF_INITIALIZING) ||
+                locoState.equals(MongoReportsDatabase.LOCOMOTIVE_STATE_SELF_FAILED)) {
+            Integer messageTime = message.getInteger("time");
+            if (messageTime - train.triggerTime < initTime * 60) {
+                logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
                 train.first2010 = null;
                 train.last2080 = null;
                 train.status = TrainStatus.UNKNOWN;
             }
-            if (locoState.equals("CUT_OUT")) {
-                if (message.getInteger("sendingReason") != 2) {
-                    // 2 = Crew initiated change—logoff, it is not a problem
-                    logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
-                    rows2010.add(train.first2010);
-                    rows2080.add(train.last2080);
-                    rowsLast.add(message);
-                }
-                train.first2010 = null;
-                train.last2080 = null;
-                train.status = TrainStatus.UNKNOWN;
+        }
+
+        if (locoState.equals("DISENGAGED")) {
+            logger.trace(train.srcAddress + " 2010 DISENGAGED");
+            if (message.getInteger("time") - train.first2010.getInteger("time") >= 60 * 60) {
+                // Init failed because of 60 minutes timeout
+                logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
+            } else {
+                logger.trace(train.srcAddress + " INIT SUCCESSFUL");
             }
+            train.first2010 = null;
+            train.last2080 = null;
+            train.status = TrainStatus.UNKNOWN;
+        }
+        if (locoState.equals("CUT_OUT")) {
+            if (message.getInteger("sendingReason") != 2) {
+                // 2 = Crew initiated change—logoff, it is not a problem
+                logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
+            }
+            train.first2010 = null;
+            train.last2080 = null;
+            train.status = TrainStatus.UNKNOWN;
         }
     }
 
@@ -72,6 +95,8 @@ public class InitFailedReport extends AbstractReport {
         Train train = processTrain(message, trains);
         train.status = TrainStatus.INITIALIZING;
         train.first2010 = null;
+        train.last2080 = null;
+        train.triggerTime = null;
     }
 
     private void process2080(Document message, Map<String, Train> trains,
@@ -82,18 +107,24 @@ public class InitFailedReport extends AbstractReport {
             return;
 
         Train train = processTrain(message, trains);
+
+        if (train.status != TrainStatus.INITIALIZING) return;
+
         train.last2080 = message;
 
-        if (train.status == TrainStatus.INITIALIZING) {
-            if (message.getInteger("speed") > 15) {
-                // Failed Init!
-                logger.debug(train.srcAddress + " INIT FAILED BY SPEED");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
-                train.first2010 = null;
-                train.status = TrainStatus.UNKNOWN;
-            }
+        if (train.triggerTime == null) {
+            train.triggerTime = message.getInteger("time");
+            return;
+        }
+
+        if (message.getInteger("speed") > 15) {
+            // Failed Init!
+            logger.debug(train.srcAddress + " INIT FAILED BY SPEED");
+            rows2010.add(train.first2010);
+            rows2080.add(train.last2080);
+            rowsLast.add(message);
+            train.first2010 = null;
+            train.status = TrainStatus.UNKNOWN;
         }
     }
 
