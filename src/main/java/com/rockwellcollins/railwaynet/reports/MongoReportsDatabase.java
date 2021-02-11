@@ -32,11 +32,6 @@ public class MongoReportsDatabase {
     private static final String FIELD_YEAR = "year";
     private static final String FIELD_URL = "url";
 
-    public static final String FIELD_LOCOMOTIVE_STATE = "locomotiveState";
-    public static final String LOCOMOTIVE_STATE_SELF_TEST = "SELF_TEST";
-    public static final String LOCOMOTIVE_STATE_SELF_INITIALIZING = "INITIALIZING";
-    public static final String LOCOMOTIVE_STATE_SELF_FAILED = "FAILED";
-
     public static final String LOCO_POSITION_REPORT = "Loco_Position_Report";
     public static final String ENFORCEMENT_REPORT = "Enforcement_Report";
     public static final String INIT_FAILED_REPORT = "Init_Failed_Report";

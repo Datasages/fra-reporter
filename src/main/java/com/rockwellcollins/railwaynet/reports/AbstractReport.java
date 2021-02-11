@@ -146,7 +146,7 @@ abstract class AbstractReport {
         int quarter = (cal.get(Calendar.MONTH) / 3) + 1;
 
         if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
-            logger.info("Monthly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");
+            logger.info("Quarterly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");
             return;
         }
 
