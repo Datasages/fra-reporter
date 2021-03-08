@@ -13,8 +13,11 @@ public class InitFailedReport extends AbstractReport {
 
     private static final Logger logger = LoggerFactory.getLogger(InitFailedReport.class);
 
+    private final int initTime;
+
     public InitFailedReport(Properties config) {
         super(config);
+        this.initTime = Integer.parseInt(config.getProperty("init.time"));
     }
 
     private void process2010(Document message, Map<String, Train> trains,
@@ -26,41 +29,61 @@ public class InitFailedReport extends AbstractReport {
 
         Train train = processTrain(message, trains);
 
+        if (train.status != TrainStatus.INITIALIZING) return;
+
         if (train.first2010 == null) {
             logger.trace(train.srcAddress + " first 2010");
             train.first2010 = message;
         }
 
-        String locoState = message.getString("locomotiveState").trim();
+        if (train.triggerTime == null) {
+            train.triggerTime = message.getInteger("time");
+            return;
+        }
 
-        if (train.status == TrainStatus.INITIALIZING) {
-            if (locoState.equals("DISENGAGED")) {
-                logger.trace(train.srcAddress + " 2010 DISENGAGED");
-                if (message.getInteger("time") - train.first2010.getInteger("time") >= 60 * 60) {
-                    // Init failed because of 60 minutes timeout
-                    logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
-                    rows2010.add(train.first2010);
-                    rows2080.add(train.last2080);
-                    rowsLast.add(message);
-                } else {
-                    logger.trace(train.srcAddress + " INIT SUCCESSFUL");
-                }
+        String locoState = message.getString(MongoMessagesDatabase.FIELD_LOCOMOTIVE_STATE).trim();
+
+        if (locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_TEST) ||
+                locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_INITIALIZING) ||
+                locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_FAILED)) {
+            Integer messageTime = message.getInteger("time");
+            if (messageTime - train.triggerTime < initTime * 60) {
+                logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
                 train.first2010 = null;
                 train.last2080 = null;
                 train.status = TrainStatus.UNKNOWN;
             }
-            if (locoState.equals("CUT_OUT")) {
-                if (message.getInteger("sendingReason") != 2) {
-                    // 2 = Crew initiated change—logoff, it is not a problem
-                    logger.debug(train.srcAddress + " INIT FAILED BECAUSE OF CUT OUT");
-                    rows2010.add(train.first2010);
-                    rows2080.add(train.last2080);
-                    rowsLast.add(message);
-                }
-                train.first2010 = null;
-                train.last2080 = null;
-                train.status = TrainStatus.UNKNOWN;
+        }
+
+        if (locoState.equals("DISENGAGED")) {
+            logger.trace(train.srcAddress + " 2010 DISENGAGED");
+            if (message.getInteger("time") - train.first2010.getInteger("time") >= 60 * 60) {
+                // Init failed because of 60 minutes timeout
+                logger.debug(train.srcAddress + " DISENGAGED too late");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
+            } else {
+                logger.trace(train.srcAddress + " INIT SUCCESSFUL");
             }
+            train.first2010 = null;
+            train.last2080 = null;
+            train.status = TrainStatus.UNKNOWN;
+        }
+        if (locoState.equals("CUT_OUT")) {
+            if (message.getInteger("sendingReason") != 2) {
+                // 2 = Crew initiated change—logoff, it is not a problem
+                logger.debug(train.srcAddress + " INIT FAILED because of CUT OUT");
+                rows2010.add(train.first2010);
+                rows2080.add(train.last2080);
+                rowsLast.add(message);
+            }
+            train.first2010 = null;
+            train.last2080 = null;
+            train.status = TrainStatus.UNKNOWN;
         }
     }
 
@@ -72,6 +95,22 @@ public class InitFailedReport extends AbstractReport {
         Train train = processTrain(message, trains);
         train.status = TrainStatus.INITIALIZING;
         train.first2010 = null;
+        train.last2080 = null;
+        train.triggerTime = null;
+    }
+
+    private void process1000(Document message, Map<String, Train> trains) {
+
+        if (message == null)
+            return;
+
+        Train train = processTrain(message, trains);
+        if (train.status != TrainStatus.INITIALIZING) return;
+
+        if (message.getString("employeeIdentifier").equals("00803170")) { // this is Stephen Reaves
+            logger.debug("Stephen Reaves logged in, skipping this cases");
+            train.status = TrainStatus.UNKNOWN;
+        }
     }
 
     private void process2080(Document message, Map<String, Train> trains,
@@ -82,18 +121,24 @@ public class InitFailedReport extends AbstractReport {
             return;
 
         Train train = processTrain(message, trains);
+
+        if (train.status != TrainStatus.INITIALIZING) return;
+
         train.last2080 = message;
 
-        if (train.status == TrainStatus.INITIALIZING) {
-            if (message.getInteger("speed") > 15) {
-                // Failed Init!
-                logger.debug(train.srcAddress + " INIT FAILED BY SPEED");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
-                train.first2010 = null;
-                train.status = TrainStatus.UNKNOWN;
-            }
+        if (train.triggerTime == null) {
+            train.triggerTime = message.getInteger("time");
+            return;
+        }
+
+        if (message.getInteger("speed") > 15) {
+            // Failed Init!
+            logger.debug(train.srcAddress + " INIT FAILED BY SPEED");
+            rows2010.add(train.first2010);
+            rows2080.add(train.last2080);
+            rowsLast.add(message);
+            train.first2010 = null;
+            train.status = TrainStatus.UNKNOWN;
         }
     }
 
@@ -101,9 +146,7 @@ public class InitFailedReport extends AbstractReport {
     protected void generateReport(String fileName, long from, long to) {
         logger.info("Generating Init Failed Report");
 
-        Iterator<Document> messages2080 = messagesDatabase.getCursor(from, to, 2080, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2010 = messagesDatabase.getCursor(from, to, 2010, new String[]{"amtk.b:cibos"});
-        Iterator<Document> messages2005 = messagesDatabase.getCursor(from, to, 2005, new String[]{"amtk.b:cibos"});
+        Iterator<Document> messages = messagesDatabase.getInitFailedMessages(from, to);
 
         List<Document> rows2080 = new ArrayList<>();
         List<Document> rows2010 = new ArrayList<>();
@@ -111,55 +154,23 @@ public class InitFailedReport extends AbstractReport {
 
         Map<String, Train> trains = new HashMap<>();
 
-        Document m2010 = null;
-        Document m2080 = null;
-        Document m2005 = null;
+        Document m = null;
 
         long i = 0;
-        while (messages2080.hasNext() || messages2005.hasNext() || messages2010.hasNext()) {
+        while (messages.hasNext()) {
             if (i++ % 1000 == 0) {
                 logger.debug("Messages processed so far: " + i);
             }
 
-            if (m2010 == null && messages2010.hasNext())
-                m2010 = messages2010.next();
+            m = messages.next();
 
-            if (m2080 == null && messages2080.hasNext())
-                m2080 = messages2080.next();
+            int idType = m.getInteger(MongoMessagesDatabase.FIELD_ID_TYPE);
 
-            if (m2005 == null && messages2005.hasNext())
-                m2005 = messages2005.next();
+            if (idType == 2010) process2010(m, trains, rows2080, rows2010, rowsLast);
+            if (idType == 2080) process2080(m, trains, rows2080, rows2010, rowsLast);
+            if (idType == 2005) process2005(m, trains);
+            if (idType == 1000) process1000(m, trains);
 
-            long m2010time = getMessageTime(m2010);
-            long m2080time = getMessageTime(m2080);
-            long m2005time = getMessageTime(m2005);
-
-            if (m2010time <= m2080time && m2010time <= m2005time) {
-                process2010(m2010, trains, rows2080, rows2010, rowsLast);
-                if (messages2010.hasNext())
-                    m2010 = messages2010.next();
-                else
-                    m2010 = null;
-                continue;
-            }
-
-            if (m2080time <= m2010time && m2080time <= m2005time) {
-                process2080(m2080, trains, rows2080, rows2010, rowsLast);
-                if (messages2080.hasNext())
-                    m2080 = messages2080.next();
-                else
-                    m2080 = null;
-                continue;
-            }
-
-            if (m2005time <= m2010time && m2005time <= m2080time) {
-                process2005(m2005, trains);
-                if (messages2005.hasNext())
-                    m2005 = messages2005.next();
-                else
-                    m2005 = null;
-                continue;
-            }
         }
 
         logger.debug("Generating Excel file");
