@@ -48,8 +48,8 @@ public class PositionReport extends AbstractReport {
             String headEndScac = record.getString(MongoMessagesDatabase.FIELD_HEAD_END_SCAC);
             String rearEndScac = record.getString(MongoMessagesDatabase.FIELD_REAR_END_SCAC);
 
-            if (headEndScac != null && !headEndScac.equals("AMTK") &&
-                    rearEndScac != null && !rearEndScac.equals("AMTK")) {
+            if (headEndScac != null && !headEndScac.toUpperCase(Locale.ROOT).equals("AMTK") &&
+                    rearEndScac != null && !rearEndScac.toUpperCase(Locale.ROOT).equals("AMTK")) {
                 // we do not care about trains outside of AMTK
                 continue;
             }
