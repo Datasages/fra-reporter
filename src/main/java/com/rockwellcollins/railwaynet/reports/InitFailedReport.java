@@ -237,7 +237,7 @@ public class InitFailedReport extends AbstractReport {
                                             null;
 
             Row eachSheetRow;
-            if (srcAddress != null && srcAddress.startsWith("amtk."))
+            if (srcAddress != null && srcAddress.startsWith("sepa."))
                 eachSheetRow = amtrakSheet.createRow(amtrakRowNum++);
             else
                 eachSheetRow = nonAmtrakSheet.createRow(nonAmtrakRowNum++);

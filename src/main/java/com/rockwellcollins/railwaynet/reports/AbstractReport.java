@@ -120,14 +120,14 @@ abstract class AbstractReport {
 
         if (mongo.monthlyReportExists(getReportType(), year, month)) {
             logger.info("Monthly report of type " + getReportType() + " for " + month + "/" + year + " already exists. Skipping.");
-            return;
+//            return;
         }
 
         String reportFileName = UUID.randomUUID().toString() + ".xlsx";
 
         this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
-        mongo.insertMonthlyReport(getReportType(), year, month, reportFileName);
+//        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
+//        mongo.insertMonthlyReport(getReportType(), year, month, reportFileName);
     }
 
     protected abstract String getReportType();
@@ -147,12 +147,12 @@ abstract class AbstractReport {
 
         if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
             logger.info("Quarterly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");
-            return;
+//            return;
         }
 
         this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(), year, quarter);
-        mongo.insertQuarterlyReport(getReportType(), year, quarter, reportFileName);
+//        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(), year, quarter);
+//        mongo.insertQuarterlyReport(getReportType(), year, quarter, reportFileName);
     }
 
     abstract String getTemplateName();
