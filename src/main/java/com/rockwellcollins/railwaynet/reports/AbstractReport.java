@@ -135,7 +135,7 @@ abstract class AbstractReport {
     protected abstract String getReportName();
 
     public void generateQuarterlyReport() {
-        String reportFileName = UUID.randomUUID().toString() + ".xls";
+        String reportFileName = UUID.randomUUID().toString() + ".xlsx";
         Date startDT = getUTC(getStartOfQuarter());
         Date endDT = getUTC(getEndOfQuarter());
 
