@@ -24,7 +24,7 @@ public class EnforcementReport extends AbstractReport {
         logger.info("Generating Enforcement Reports");
 
         Iterator<Document> messages2083 = messagesDatabase.getCursor(from, to,
-                2083, new String[]{"amtk.b:gb.nec", "amtk.b:gb.me"});
+                2083, Starter.ENFORCEMENT_REPORT_DEST_ADDRESSES);
 
         List<Document> enforcements = new ArrayList<>();
         Map<String, Integer> stats = new HashMap<>();

@@ -51,8 +51,8 @@ public class PositionReport extends AbstractReport {
             headEndScac = headEndScac == null ? "" : headEndScac;
             rearEndScac = rearEndScac == null ? "" : rearEndScac;
 
-            if (!headEndScac.toUpperCase(Locale.ROOT).equals("AMTK") &&
-                    !rearEndScac.toUpperCase(Locale.ROOT).equals("AMTK")) {
+            if (!headEndScac.toUpperCase(Locale.ROOT).equals(Starter.POSITION_REPORT_HEAD_REAR_SCAC) &&
+                    !rearEndScac.toUpperCase(Locale.ROOT).equals(Starter.POSITION_REPORT_HEAD_REAR_SCAC)) {
                 // we are only interested in locomotive at the AMTK SCAC
                 continue;
             }
@@ -166,7 +166,7 @@ public class PositionReport extends AbstractReport {
             return;
 
         String srcAddress = message.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS);
-        if (srcAddress.startsWith("amtk.")) {
+        if (srcAddress.startsWith(Starter.POSITION_REPORT_SRC_ADDRESS)) {
             // we only are interested in foreign locomotives
             return;
         }
@@ -194,7 +194,7 @@ public class PositionReport extends AbstractReport {
         // We start loading data from two days before the report period to collect
         // messages of routes which started in the previous period and ended in this period
         Iterator<Document> messages2080 = messagesDatabase.getCursor(from - SECONDS_IN_TWO_DAYS, to,
-                2080, new String[]{"amtk.b:cibos"});
+                2080, Starter.POSITION_REPORT_DEST_ADDRESSES);
         Iterator<Document> messages2003 = messagesDatabase.getCursor(from - SECONDS_IN_TWO_DAYS, to,
                 2003, null);
 

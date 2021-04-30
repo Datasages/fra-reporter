@@ -77,7 +77,7 @@ public class MongoMessagesDatabase {
         conditions.add(gt("time", startDate));
         conditions.add(lt("time", endDate));
         conditions.add(in(FIELD_ID_TYPE, 2080, 2010, 2005, 1000));
-        conditions.add(in("destAddress", "amtk.b:cibos"));
+        conditions.add(in("destAddress", Starter.INIT_FAILED_REPORT_DEST_ADDRESS));
         Bson filter = and(conditions);
 
         logger.debug("Filter is ready, running request to Mongo...");

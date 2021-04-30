@@ -14,6 +14,27 @@ public class Starter {
 
     private static final Properties config = new Properties();
 
+//    private static final String[] ENFORCEMENT_REPORT_DEST_ADDRESSES = new String[]{"amtk.b:gb.nec", "amtk.b:gb.me"};
+    public static final String[] ENFORCEMENT_REPORT_DEST_ADDRESSES = new String[]{"njtr.b:gcibos"};
+
+//    public static final String INIT_FAILED_REPORT_SRC_ADDRESS = "amtk.";
+    public static final String INIT_FAILED_REPORT_SRC_ADDRESS = "njtr.";
+//    public static final String INIT_FAILED_REPORT_DEST_ADDRESS = "amtk.b:cibos";
+    public static final String INIT_FAILED_REPORT_DEST_ADDRESS = "njtr.b:gcibos";
+
+//    public static final String POSITION_REPORT_HEAD_REAR_SCAC = "AMTK";
+    public static final String POSITION_REPORT_HEAD_REAR_SCAC = "NJTR";
+//    public static final String POSITION_REPORT_SRC_ADDRESS = "amtk.";
+    public static final String POSITION_REPORT_SRC_ADDRESS = "njtr.";
+//    public static final String[] POSITION_REPORT_DEST_ADDRESSES = new String[]{"amtk.b:cibos"};;
+    public static final String[] POSITION_REPORT_DEST_ADDRESSES = new String[]{"njtr.b:gcibos"};;
+
+    /**
+     * Set to false for a local/debug run.
+     * It will not upload files to S3, nor update the reports metadata records in Mongo.
+     */
+    public static final boolean UPLOAD = false;
+
     private static void readConfig(String[] args) {
         String fileName;
 

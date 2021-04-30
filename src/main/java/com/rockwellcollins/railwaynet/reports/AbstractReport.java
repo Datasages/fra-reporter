@@ -118,7 +118,7 @@ abstract class AbstractReport {
         int year = cal.get(Calendar.YEAR);
         int month = cal.get(Calendar.MONTH) + 1;    // adding 1 because in JSON we count months from 1 to 12
 
-        if (mongo.monthlyReportExists(getReportType(), year, month)) {
+        if (Starter.UPLOAD &&  mongo.monthlyReportExists(getReportType(), year, month)) {
             logger.info("Monthly report of type " + getReportType() + " for " + month + "/" + year + " already exists. Skipping.");
             return;
         }
@@ -126,8 +126,11 @@ abstract class AbstractReport {
         String reportFileName = UUID.randomUUID().toString() + ".xlsx";
 
         this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-        s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
-        mongo.insertMonthlyReport(getReportType(), year, month, reportFileName);
+
+        if (Starter.UPLOAD) {
+            s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
+            mongo.insertMonthlyReport(getReportType(), year, month, reportFileName);
+        }
     }
 
     protected abstract String getReportType();
@@ -145,14 +148,17 @@ abstract class AbstractReport {
         int year = cal.get(Calendar.YEAR);
         int quarter = (cal.get(Calendar.MONTH) / 3) + 1;
 
-        if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
+        if (Starter.UPLOAD && mongo.quarterlyReportExists(getReportType(), year, quarter)) {
             logger.info("Quarterly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");
             return;
         }
 
         this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
-        s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(), year, quarter);
-        mongo.insertQuarterlyReport(getReportType(), year, quarter, reportFileName);
+
+        if (Starter.UPLOAD) {
+            s3Repository.upload(reportFileName, "Quarterly " + getReportName(), getReportType(), year, quarter);
+            mongo.insertQuarterlyReport(getReportType(), year, quarter, reportFileName);
+        }
     }
 
     abstract String getTemplateName();
