@@ -84,7 +84,6 @@ public class MongoMessagesDatabase {
         return new MessagesIterator(messages
                 .find(filter)
                 .sort(new BasicDBObject("time", 1))
-                .noCursorTimeout(true)
                 .batchSize(10000)
                 .iterator());
     }
