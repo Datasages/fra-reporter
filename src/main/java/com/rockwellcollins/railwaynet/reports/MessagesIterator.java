@@ -1,12 +1,16 @@
 package com.rockwellcollins.railwaynet.reports;
 
 import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.text.SimpleDateFormat;
 import java.util.Iterator;
 import java.util.Map;
 
 public class MessagesIterator implements Iterator<Document> {
+
+    private static final Logger logger = LoggerFactory.getLogger(MessagesIterator.class);
 
     private final Iterator<Document> iterator;
 
@@ -78,6 +82,16 @@ public class MessagesIterator implements Iterator<Document> {
         addTime(message, "enforcementTime");
         addTime(message, "emergencyEnforcementTime");
         addTime(message, "currentTime");
+    }
+
+    private Integer getIntegerValue(Document message, String fieldName) {
+        try {
+            return message.getInteger(fieldName);
+        } catch (ClassCastException e) {
+            logger.error("Can't get integer value!", e);
+            logger.error(message.toJson());
+            return 0;
+        }
     }
 
     private void handleMiles(Document message) {
