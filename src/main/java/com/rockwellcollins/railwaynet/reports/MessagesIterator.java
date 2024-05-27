@@ -96,11 +96,11 @@ public class MessagesIterator implements Iterator<Document> {
 
     private void handleMiles(Document message) {
         if (message.containsKey("headEndMilepost")) {
-            Integer mp = message.getInteger("headEndMilepost");
+            Integer mp = getIntegerValue(message, "headEndMilepost");
             message.put("headEndMilepost1000", mp == null ? 0 : mp / 10000.0);
         }
         if (message.containsKey("rearEndMilepost")) {
-            Integer mp = message.getInteger("rearEndMilepost");
+            Integer mp = getIntegerValue(message, "rearEndMilepost");
             message.put("rearEndMilepost1000", mp == null ? 0 : mp / 10000.0);
         }
     }
