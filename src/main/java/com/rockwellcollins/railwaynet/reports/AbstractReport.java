@@ -25,9 +25,12 @@ abstract class AbstractReport {
 
     protected final S3Repository s3Repository;
 
-    private final LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
-
     private final MongoReportsDatabase mongo;
+
+    private int initYear;
+    private int initMonth;
+
+    private String disableQuarterly;
 
     /**
      * Create new report generator
@@ -36,6 +39,21 @@ abstract class AbstractReport {
      */
     public AbstractReport(Properties config) {
         this.config = config;
+
+        this.disableQuarterly = config.getProperty("init.disable.quarterly", null);
+
+        this.initYear = Integer.parseInt(config.getProperty("init.year", "0"));
+        this.initMonth = Integer.parseInt(config.getProperty("init.month", "0"));
+
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
+
+        if (this.initYear == 0) {
+            this.initYear = now.getYear();
+        }
+
+        if (this.initMonth == 0) {
+            this.initMonth = now.getMonthValue();
+        }
 
         this.messagesDatabase = new MongoMessagesDatabase(
                 config.getProperty("messages.mongo.url"),
@@ -70,8 +88,8 @@ abstract class AbstractReport {
     protected abstract void generateReport(String fileName, long from, long to);
 
     private String getStartOfMonth() {
-        int year = now.getYear();
-        int currentMonth = now.getMonthValue();
+        int year = this.initYear;
+        int currentMonth = this.initMonth;
 
         if (currentMonth > 1) {
             String month = currentMonth > 10 ? String.valueOf(currentMonth - 1) : "0" + (currentMonth - 1);
@@ -82,16 +100,16 @@ abstract class AbstractReport {
     }
 
     private String getEndOfMonth() {
-        int year = now.getYear();
-        int currentMonth = now.getMonthValue();
+        int year = this.initYear;
+        int currentMonth = this.initMonth;
 
         String month = currentMonth > 9 ? String.valueOf(currentMonth) : "0" + currentMonth;
         return year + "-" + month + "-01";
     }
 
     private String getStartOfQuarter() {
-        int currentMonth = now.getMonthValue();
-        int year = now.getYear();
+        int currentMonth = this.initMonth;
+        int year = this.initYear;
 
         if (currentMonth < 4) return (year - 1) + "-10-01";
         if (currentMonth < 7) return year + "-01-01";
@@ -100,8 +118,8 @@ abstract class AbstractReport {
     }
 
     private String getEndOfQuarter() {
-        int currentMonth = now.getMonthValue();
-        int year = now.getYear();
+        int currentMonth = this.initMonth;
+        int year = this.initYear;
 
         if (currentMonth < 4) return year + "-01-01";
         if (currentMonth < 7) return year + "-04-01";
@@ -123,7 +141,7 @@ abstract class AbstractReport {
             return;
         }
 
-        String reportFileName = UUID.randomUUID().toString() + ".xlsx";
+        String reportFileName = UUID.randomUUID() + ".xlsx";
 
         this.generateReport(reportFileName, startDT.getTime() / 1000, endDT.getTime() / 1000);
         s3Repository.upload(reportFileName, "Monthly " + getReportName(), getReportType(), year, month);
@@ -135,15 +153,21 @@ abstract class AbstractReport {
     protected abstract String getReportName();
 
     public void generateQuarterlyReport() {
-        String reportFileName = UUID.randomUUID().toString() + ".xlsx";
+
+        if (this.disableQuarterly != null) {
+            logger.info("Quarterly reports disabled in config");
+            return;
+        }
+
+        String reportFileName = UUID.randomUUID() + ".xlsx";
         Date startDT = getUTC(getStartOfQuarter());
         Date endDT = getUTC(getEndOfQuarter());
 
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.setTime(startDT);
 
-        int year = cal.get(Calendar.YEAR);
-        int quarter = (cal.get(Calendar.MONTH) / 3) + 1;
+        int year = this.initYear;
+        int quarter = (this.initMonth / 3) + 1;
 
         if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
             logger.info("Quarterly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");

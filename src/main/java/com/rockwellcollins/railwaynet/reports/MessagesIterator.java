@@ -88,7 +88,10 @@ public class MessagesIterator implements Iterator<Document> {
         try {
             return message.getInteger(fieldName);
         } catch (ClassCastException e) {
-            logger.error("Can't get integer value!", e);
+            Document data = message.get(fieldName, Document.class);
+            return data.getInteger("number");
+        } catch (RuntimeException re) {
+            logger.error("Can't get integer value!", re);
             logger.error(message.toJson());
             return 0;
         }

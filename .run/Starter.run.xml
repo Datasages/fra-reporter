@@ -1,5 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Starter" type="Application" factoryName="Application" nameIsGenerated="true">
+    <output_file path="$PROJECT_DIR$/build/run.log" is_save="true" />
     <option name="MAIN_CLASS_NAME" value="com.rockwellcollins.railwaynet.reports.Starter" />
     <module name="strolrscheduler" />
     <option name="PROGRAM_PARAMETERS" value="config.document-db.properties" />

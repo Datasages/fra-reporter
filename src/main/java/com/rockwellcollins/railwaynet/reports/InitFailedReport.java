@@ -48,10 +48,7 @@ public class InitFailedReport extends AbstractReport {
                 locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_FAILED)) {
             Integer messageTime = message.getInteger("time");
             if (messageTime - train.triggerTime < initTime * 60) {
-                logger.debug(train.srcAddress + " INIT FAILED BY TIMEOUT");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
+                addLine("INIT FAILED BY TIMEOUT", train, rows2010, rows2080, rowsLast, message);
                 train.first2010 = null;
                 train.last2080 = null;
                 train.status = TrainStatus.UNKNOWN;
@@ -62,10 +59,7 @@ public class InitFailedReport extends AbstractReport {
             logger.trace(train.srcAddress + " 2010 DISENGAGED");
             if (message.getInteger("time") - train.first2010.getInteger("time") >= 60 * 60) {
                 // Init failed because of 60 minutes timeout
-                logger.debug(train.srcAddress + " DISENGAGED too late");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
+                addLine("DISENGAGED too late", train, rows2010, rows2080, rowsLast, message);
             } else {
                 logger.trace(train.srcAddress + " INIT SUCCESSFUL");
             }
@@ -81,14 +75,20 @@ public class InitFailedReport extends AbstractReport {
             }
             if (message.getInteger("sendingReasonValue") != 2) {
                 // 2 = Crew initiated change—logoff, it is not a problem
-                logger.debug(train.srcAddress + " INIT FAILED because of CUT OUT");
-                rows2010.add(train.first2010);
-                rows2080.add(train.last2080);
-                rowsLast.add(message);
+                addLine("INIT FAILED because of CUT OUT", train, rows2010, rows2080, rowsLast, message);
             }
             train.first2010 = null;
             train.last2080 = null;
             train.status = TrainStatus.UNKNOWN;
+        }
+    }
+
+    private void logMessage(String s, Document message) {
+        logger.debug(s + "\n----------");
+        if (message == null) {
+            logger.debug("NULL");
+        } else {
+            logger.debug(message.toJson());
         }
     }
 
@@ -137,14 +137,23 @@ public class InitFailedReport extends AbstractReport {
         }
 
         if (message.getInteger("speed") > 15) {
-            // Failed Init!
-            logger.debug(train.srcAddress + " INIT FAILED BY SPEED");
-            rows2010.add(train.first2010);
-            rows2080.add(train.last2080);
-            rowsLast.add(message);
+            addLine("INIT FAILED BY SPEED", train, rows2010, rows2080, rowsLast, message);
             train.first2010 = null;
             train.status = TrainStatus.UNKNOWN;
         }
+    }
+
+    private void addLine(String title, Train train,
+                         List<Document> rows2010, List<Document> rows2080, List<Document> rowsLast,
+                         Document message) {
+        logger.debug(train.srcAddress + " " + title);
+        rows2010.add(train.first2010);
+        rows2080.add(train.last2080);
+        rowsLast.add(message);
+
+        logMessage("First 2010", train.first2010);
+        logMessage("2080", train.last2080);
+        logMessage("Last 2010", message);
     }
 
     @Override
@@ -159,7 +168,7 @@ public class InitFailedReport extends AbstractReport {
 
         Map<String, Train> trains = new HashMap<>();
 
-        Document m = null;
+        Document m;
 
         long i = 0;
         while (messages.hasNext()) {
@@ -232,9 +241,7 @@ public class InitFailedReport extends AbstractReport {
 
             String srcAddress =
                     message2010 != null ? message2010.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
-                            message2080 != null ? message2080.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
-                                    messageLast != null ? messageLast.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS) :
-                                            null;
+                            message2080.getString(MongoMessagesDatabase.FIELD_SRC_ADDRESS);
 
             Row eachSheetRow;
             if (srcAddress != null && srcAddress.startsWith("amtk."))
@@ -250,10 +257,8 @@ public class InitFailedReport extends AbstractReport {
             eachSheetRow.createCell(columnCount++).setCellValue(message2080.getString("stateTimeUTC"));
             eachSheetRow.createCell(columnCount++).setCellValue(message2080.getString("locomotiveState"));
             if (message2010 != null) {
-                eachSheetRow.createCell(columnCount++).setCellValue(
-                        message2010 == null ? "NA" : message2010.getString("locomotiveStateTimeUTC"));
-                eachSheetRow.createCell(columnCount++).setCellValue(
-                        message2010 == null ? "NA" : message2010.getString("clearanceNumber"));
+                eachSheetRow.createCell(columnCount++).setCellValue(message2010.getString("locomotiveStateTimeUTC"));
+                eachSheetRow.createCell(columnCount++).setCellValue(message2010.getString("clearanceNumber"));
             } else {
                 eachSheetRow.createCell(columnCount++).setCellValue("N/A");
                 eachSheetRow.createCell(columnCount++).setCellValue("N/A");
