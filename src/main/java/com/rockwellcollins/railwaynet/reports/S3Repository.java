@@ -1,7 +1,6 @@
 package com.rockwellcollins.railwaynet.reports;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
@@ -21,12 +20,9 @@ public class S3Repository {
 
     public S3Repository(Properties config) {
         this.bucketName = config.getProperty("aws.api.S3bucket");
-        BasicAWSCredentials bAWSc = new BasicAWSCredentials(
-                config.getProperty("aws.api.key"),
-                config.getProperty("aws.api.secret"));
         this.s3client = AmazonS3ClientBuilder
                 .standard()
-                .withCredentials(new AWSStaticCredentialsProvider(bAWSc))
+                .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
                 .withRegion(Regions.fromName(config.getProperty("aws.api.region")))
                 .build();
     }
