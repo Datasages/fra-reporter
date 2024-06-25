@@ -1,3 +1,4 @@
+.DS_Store
 /.idea
 /build/Monthly_AMTK_PTC_Loco_Position_Report_2020_10.xlsx
 /build/Quarterly_AMTK_PTC_Loco_Position_Report_2020_3.xlsx
@@ -9,3 +10,6 @@
 /build/Quarterly_AMTK_PTC_Init_Failed_Report_2020_3.xlsx
 /build/Monthly_AMTK_PTC_Loco_Enforcement_Report_2020_11.xlsx
 /build/Monthly_AMTK_PTC_Loco_Position_Report_2020_11.xlsx
+/build/*.jar
+/build/run.log
+/build/config.document-db.properties
