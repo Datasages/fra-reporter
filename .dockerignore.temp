@@ -1,0 +1,61 @@
+# Temporary dockerignore for manual build - allows JAR file
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Git
+.git/
+.gitignore
+
+# Terraform
+*.tf
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Docker (except temp)
+Dockerfile
+Dockerfile.mongo
+.dockerignore
+
+# Documentation
+*.md
+Docs/
+
+# Test and development files
+.run/
+.classpath
+.project
+
+# Generated Excel files (except templates)
+*.xlsx
+!build/*.xlsx
+
+# Scripts (except needed ones)
+scripts/
+!scripts/mongo_migration.py
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# AWS deployment files
+aws-*.yml
+aws-*.json
+
+# Allow target JAR for temp build
+!target/*-jar-with-dependencies.jar

@@ -12,3 +12,11 @@
 
 { "$and" : [ {"idType": { "$eq": 2080 } },  {"positionReportReason" : { "$eq": "ONBOARD_INITIALIZATION"} }, {"time": {"$gt": 1604188800000 } }, {"destAddress" : {"$eq": "amtk.b:gb.nec" } } ] }
 
+// Query Indexes
+
+db.messages.createIndex({ "time": 1, "idType": 1, "destAddress": 1 })
+
+  For the secondary indexes:
+  db.messages.createIndex({ "time": 1 })
+  db.messages.createIndex({ "srcAddress": 1, "time": 1 })
+  db.messages.createIndex({ "idType": 1 })

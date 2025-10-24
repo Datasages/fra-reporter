@@ -1,0 +1,238 @@
+# Temporary FRA Report Generator - Self-contained with local MongoDB access
+# For manual report generation with local data
+
+FROM eclipse-temurin:17-jre-alpine
+
+# Install runtime dependencies and tools for manual interaction
+RUN apk add --no-cache \
+    curl \
+    bash \
+    nano \
+    vim \
+    tzdata \
+    aws-cli \
+    netcat-openbsd \
+    && rm -rf /var/cache/apk/*
+
+# Create app user for security but allow sudo for manual operations
+RUN addgroup -g 1001 appgroup && \
+    adduser -D -u 1001 -G appgroup appuser && \
+    apk add --no-cache sudo && \
+    echo "appuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Set working directory
+WORKDIR /app
+
+# Copy the pre-built JAR (build it first with mvn package)
+COPY target/fra-report-generator-*-jar-with-dependencies.jar app.jar
+
+# Copy Excel templates to working directory and keep build folder structure
+COPY build/*.xlsx ./
+COPY build/ ./build/
+
+# Create configuration for local MongoDB (will be updated by startup script)
+RUN cat > /app/config.properties << 'EOF'
+# Local MongoDB configuration (MONGO_HOST will be replaced at runtime)
+reports.mongo.url=mongodb://MONGO_HOST:27017/
+reports.mongo.database=amtk_reports
+reports.mongo.collection=reports
+
+messages.mongo.url=mongodb://MONGO_HOST:27017/
+messages.mongo.database=amtk_reports
+messages.mongo.collection=amtk_messages
+
+# AWS S3 configuration
+aws.api.region=us-east-1
+aws.s3bucket.report=replication.rwn.amtk.reports
+
+# Initialization timeout configuration (in minutes)
+init.time=30
+EOF
+
+# Create manual run script
+RUN cat > /app/run-reports.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "=== FRA Report Generator - Manual Mode ==="
+echo "Starting at: $(date)"
+echo ""
+
+# Determine MongoDB host - try different options for different environments
+echo "Determining MongoDB host..."
+
+# Check if MONGO_HOST is already set (e.g., via environment variable)
+if [ -n "$MONGO_HOST" ]; then
+    echo "Using provided MONGO_HOST: $MONGO_HOST"
+    echo "  Testing $MONGO_HOST:27017..."
+    if nc -z -w3 "$MONGO_HOST" 27017 2>/dev/null; then
+        echo "✅ MongoDB found at $MONGO_HOST:27017"
+    else
+        echo "❌ Cannot connect to MongoDB at $MONGO_HOST:27017"
+        echo "Even though MONGO_HOST was provided, connection failed"
+        exit 1
+    fi
+else
+    # Try different host options for auto-detection
+    MONGO_HOST=""
+    for host in "127.0.0.1" "host.docker.internal" "172.17.0.1" "gateway.docker.internal" "host-gateway"; do
+        echo "  Testing $host:27017..."
+        if nc -z -w3 "$host" 27017 2>/dev/null; then
+            MONGO_HOST="$host"
+            echo "✅ MongoDB found at $host:27017"
+            break
+        fi
+    done
+
+    # If no standard host works, try to get the default gateway
+    if [ -z "$MONGO_HOST" ]; then
+        echo "  Trying default gateway..."
+        GATEWAY=$(ip route | awk '"'"'/default/ { print $3 }'"'"' | head -1)
+        if [ -n "$GATEWAY" ] && nc -z -w3 "$GATEWAY" 27017 2>/dev/null; then
+            MONGO_HOST="$GATEWAY"
+            echo "✅ MongoDB found at gateway $GATEWAY:27017"
+        fi
+    fi
+fi
+
+# Final check
+if [ -z "$MONGO_HOST" ]; then
+    echo "❌ MongoDB connection failed"
+    echo ""
+    echo "Tried the following hosts:"
+    echo "  - host.docker.internal:27017 (Docker Desktop)"
+    echo "  - 172.17.0.1:27017 (Default Docker bridge)"
+    echo "  - gateway.docker.internal:27017 (Docker)"
+    echo "  - Default gateway:27017"
+    echo ""
+    echo "To fix this:"
+    echo "  1. Make sure MongoDB is running on the host"
+    echo "  2. Run with: docker run --add-host=host.docker.internal:host-gateway ..."
+    echo "  3. Or run with: docker run --network=host ..."
+    echo "  4. Or set MONGO_HOST: docker run -e MONGO_HOST=<ip> ..."
+    exit 1
+fi
+
+# Update config file with discovered MongoDB host
+echo "Updating configuration with MongoDB host: $MONGO_HOST"
+sed -i "s/MONGO_HOST/$MONGO_HOST/g" /app/config.properties
+
+# Override AWS region if provided via environment variable
+if [ -n "$AWS_REGION" ]; then
+    echo "Overriding AWS region with: $AWS_REGION"
+    sed -i "s/aws.api.region=.*/aws.api.region=$AWS_REGION/g" /app/config.properties
+fi
+
+# Check AWS credentials (instance role or configured)
+echo "Checking AWS credentials..."
+if aws sts get-caller-identity > /dev/null 2>&1; then
+    echo "✅ AWS credentials available"
+    AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+    AWS_ROLE=$(aws sts get-caller-identity --query Arn --output text 2>/dev/null | grep -o 'role/[^/]*' || echo "configured-credentials")
+    echo "   Account: $AWS_ACCOUNT"
+    echo "   Role: $AWS_ROLE"
+else
+    echo "❌ AWS credentials not available"
+    echo "Either configure credentials with 'aws configure' or ensure EC2 instance role is attached"
+    exit 1
+fi
+
+# Check S3 bucket access
+echo "Checking S3 bucket access..."
+if aws s3 ls s3://replication.rwn.amtk.reports/ > /dev/null 2>&1; then
+    echo "✅ S3 bucket accessible"
+else
+    echo "❌ S3 bucket not accessible"
+    echo "Check bucket permissions for: replication.rwn.amtk.reports"
+fi
+
+echo ""
+echo "Environment ready! Running report generator..."
+echo "Configuration file: /app/config.properties"
+echo "Templates directory: /app/build/"
+echo ""
+
+# Run the report generator
+java $JAVA_OPTS -jar app.jar "$@"
+
+exit_code=$?
+echo ""
+echo "Report generation completed at: $(date)"
+echo "Exit code: $exit_code"
+
+if [ $exit_code -eq 0 ]; then
+    echo "✅ Reports generated successfully"
+    echo ""
+    echo "Check S3 bucket for uploaded reports:"
+    echo "aws s3 ls s3://replication.rwn.amtk.reports/ --recursive | tail -10"
+else
+    echo "❌ Report generation failed"
+fi
+
+exit $exit_code
+EOF
+
+# Create interactive shell script
+RUN cat > /app/shell.sh << 'EOF'
+#!/bin/bash
+echo "=== FRA Report Generator - Interactive Shell ==="
+echo "Available commands:"
+echo "  ./run-reports.sh          - Generate all reports"
+echo "  aws s3 ls s3://replication.rwn.amtk.reports/  - List S3 reports"
+echo "  aws configure              - Configure AWS credentials"
+echo "  nano config.properties     - Edit configuration"
+echo "  java -jar app.jar --help   - Show Java app help"
+echo ""
+echo "Configuration file: /app/config.properties"
+echo "Templates: /app/build/"
+echo "MongoDB: host.docker.internal:27017 -> amtk_reports.amtk_messages"
+echo ""
+exec /bin/bash
+EOF
+
+# Create AWS configuration helper
+RUN cat > /app/setup-aws.sh << 'EOF'
+#!/bin/bash
+echo "AWS Configuration Helper"
+echo "========================"
+echo ""
+echo "Enter your AWS credentials:"
+read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID
+read -s -p "AWS Secret Access Key: " AWS_SECRET_ACCESS_KEY
+echo ""
+read -p "Default region [us-east-1]: " AWS_REGION
+AWS_REGION=${AWS_REGION:-us-east-1}
+
+aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+aws configure set default.region "$AWS_REGION"
+
+echo "AWS credentials configured!"
+echo "Testing connection..."
+aws sts get-caller-identity
+EOF
+
+# Create directory for reports output (optional local copy)
+RUN mkdir -p /app/reports
+
+# Make scripts executable
+RUN chmod +x /app/run-reports.sh /app/shell.sh /app/setup-aws.sh
+
+# Set ownership
+RUN chown -R appuser:appgroup /app
+
+# Switch to app user
+USER appuser
+
+# Set default JVM options
+ENV JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+ENV TZ=UTC
+
+# Default to interactive shell
+CMD ["/app/shell.sh"]
+
+# Labels
+LABEL maintainer="Railway Network Team" \
+      description="FRA Report Generator - Temporary Manual Mode" \
+      version="1.0.0-temp" \
+      purpose="Manual report generation with local MongoDB and S3 upload"

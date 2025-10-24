@@ -1,0 +1,106 @@
+# AWS Batch Configuration for FRA Report Generator
+# This file can be used with AWS CLI or CloudFormation/CDK
+
+# Job Definition Template
+apiVersion: batch/v1
+kind: JobDefinition
+metadata:
+  name: fra-report-generator-job
+spec:
+  type: container
+  platformCapabilities:
+    - EC2
+  containerProperties:
+    image: your-ecr-repo/fra-report-generator:latest
+    vcpus: 2
+    memory: 4096
+    jobRoleArn: arn:aws:iam::YOUR_ACCOUNT:role/FRAReportGeneratorJobRole
+    executionRoleArn: arn:aws:iam::YOUR_ACCOUNT:role/FRAReportGeneratorExecutionRole
+
+    environment:
+      - name: AWS_DEFAULT_REGION
+        value: us-east-1
+      - name: CONFIG_FILE
+        value: /app/config/production-config.properties
+
+    mountPoints:
+      - sourceVolume: config-volume
+        containerPath: /app/config
+        readOnly: true
+
+    volumes:
+      - name: config-volume
+        host:
+          sourcePath: /opt/fra/config
+
+    # Resource requirements
+    resourceRequirements:
+      - type: MEMORY
+        value: "4096"
+      - type: VCPU
+        value: "2"
+
+    # Timeout (24 hours)
+    timeout:
+      attemptDurationSeconds: 86400
+
+---
+# EventBridge Rule for Monthly Execution
+apiVersion: events/v1
+kind: Rule
+metadata:
+  name: fra-monthly-schedule
+spec:
+  scheduleExpression: "cron(0 6 2 * ? *)"  # 6 AM on 2nd day of every month
+  state: ENABLED
+  targets:
+    - id: "1"
+      arn: arn:aws:batch:us-east-1:YOUR_ACCOUNT:job-queue/FRAQueue
+      batchParameters:
+        jobDefinition: fra-report-generator-job
+        jobName: fra-monthly-report
+        jobQueue: FRAQueue
+
+---
+# Compute Environment Configuration
+apiVersion: batch/v1
+kind: ComputeEnvironment
+metadata:
+  name: fra-compute-env
+spec:
+  type: MANAGED
+  state: ENABLED
+  computeResources:
+    type: EC2
+    minvCpus: 0
+    maxvCpus: 256
+    desiredvCpus: 0
+    instanceTypes:
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+    ec2Configuration:
+      - imageType: ECS_AL2
+    subnets:
+      - subnet-XXXXXXXXX  # Replace with your subnet IDs
+      - subnet-YYYYYYY
+    securityGroupIds:
+      - sg-XXXXXXXXX     # Replace with your security group ID
+    instanceRole: arn:aws:iam::YOUR_ACCOUNT:instance-profile/ecsInstanceRole
+    tags:
+      Project: FRA-Report-Generator
+      Environment: Production
+      Owner: RailwayTeam
+
+---
+# Job Queue Configuration
+apiVersion: batch/v1
+kind: JobQueue
+metadata:
+  name: FRAQueue
+spec:
+  state: ENABLED
+  priority: 1
+  computeEnvironmentOrder:
+    - order: 1
+      computeEnvironment: fra-compute-env

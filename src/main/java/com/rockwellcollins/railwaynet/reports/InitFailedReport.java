@@ -47,7 +47,7 @@ public class InitFailedReport extends AbstractReport {
                 locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_INITIALIZING) ||
                 locoState.equals(MongoMessagesDatabase.LOCOMOTIVE_STATE_SELF_FAILED)) {
             Integer messageTime = message.getInteger("time");
-            if (messageTime - train.triggerTime < initTime * 60) {
+            if (messageTime - train.triggerTime >= initTime * 60) {
                 addLine("INIT FAILED BY TIMEOUT", train, rows2010, rows2080, rowsLast, message);
                 train.first2010 = null;
                 train.last2080 = null;
