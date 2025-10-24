@@ -13,3 +13,7 @@
 /build/*.jar
 /build/run.log
 /build/config.document-db.properties
+bin/**
+.settings/**
+
+

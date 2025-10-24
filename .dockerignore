@@ -1,0 +1,63 @@
+# Ignore files that shouldn't be in Docker context
+
+# Build artifacts
+target/
+*.jar
+# Allow JAR for temp build
+!target/*-jar-with-dependencies.jar
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Git
+.git/
+.gitignore
+
+# Terraform
+*.tf
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation
+*.md
+Docs/
+
+# Test and development files
+.run/
+.classpath
+.project
+
+# Generated Excel files (except templates)
+*.xlsx
+!build/*.xlsx
+
+# Scripts (exclude deployment scripts but keep migration script)
+scripts/
+!scripts/mongo_migration.py
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# AWS deployment files
+aws-*.yml
+aws-*.json

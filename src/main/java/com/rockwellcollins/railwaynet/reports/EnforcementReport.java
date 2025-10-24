@@ -21,7 +21,9 @@ public class EnforcementReport extends AbstractReport {
     }
 
     public void generateReport(String fileName, long from, long to) {
-        logger.info("Generating Enforcement Reports");
+        logger.info("Generating Enforcement Reports for period: {} to {}",
+                    new java.util.Date(from * 1000), new java.util.Date(to * 1000));
+        logger.info("Date range in seconds: {} to {}", from, to);
 
         Iterator<Document> messages2083 = messagesDatabase.getCursor(from, to,
                 2083, new String[]{"amtk.b:gb.nec", "amtk.b:gb.me"});
@@ -29,9 +31,46 @@ public class EnforcementReport extends AbstractReport {
         List<Document> enforcements = new ArrayList<>();
         Map<String, Integer> stats = new HashMap<>();
 
+        int messageCount = 0;
+        int processedCount = 0;
+
         while (messages2083.hasNext()) {
-            process2083(messages2083.next(), enforcements, stats);
+            messageCount++;
+            Document message = messages2083.next();
+
+            if (messageCount <= 5) {
+                // Handle both Integer and Long time fields safely
+                Object timeObj = message.get("time");
+                Long timeValue = null;
+                if (timeObj instanceof Integer) {
+                    timeValue = ((Integer) timeObj).longValue();
+                } else if (timeObj instanceof Long) {
+                    timeValue = (Long) timeObj;
+                }
+
+                logger.info("Sample message #{}: destAddress={}, srcAddress={}, time={}, enforcementScac={}, emergencyEnforcementScac={}",
+                           messageCount,
+                           message.getString("destAddress"),
+                           message.getString("srcAddress"),
+                           timeValue,
+                           message.getString(FIELD_ENFORCEMENT_SCAC),
+                           message.getString(FIELD_EMERGENCY_ENFORCEMENT_SCAC));
+            }
+
+            int beforeSize = enforcements.size();
+            process2083(message, enforcements, stats);
+            if (enforcements.size() > beforeSize) {
+                processedCount++;
+            }
+
+            if (messageCount % 1000 == 0) {
+                logger.info("Processed {} messages, {} enforcement events found so far", messageCount, enforcements.size());
+            }
         }
+
+        logger.info("ENFORCEMENT SUMMARY: Total messages: {}, Enforcement events found: {}, Messages that created events: {}",
+                   messageCount, enforcements.size(), processedCount);
+        logger.info("Statistics breakdown: {}", stats);
 
         makeExcel(fileName, enforcements, stats);
     }
@@ -202,22 +241,32 @@ public class EnforcementReport extends AbstractReport {
     private void process2083(Document message2083, List<Document> enforcements, Map<String, Integer> stats) {
         String enforcementScac = message2083.getString(FIELD_ENFORCEMENT_SCAC);
         String emergencyEnforcementScac = message2083.getString(FIELD_EMERGENCY_ENFORCEMENT_SCAC);
+        String targetType = message2083.getString(FIELD_TARGET_TYPE);
+
+        // Log every message for debugging (only first 10 to avoid spam)
+        if (enforcements.size() < 10) {
+            logger.info("Processing message: enforcementScac='{}', emergencyEnforcementScac='{}', targetType='{}', srcAddress='{}'",
+                       enforcementScac, emergencyEnforcementScac, targetType, message2083.getString("srcAddress"));
+        }
 
         if ((emergencyEnforcementScac == null || emergencyEnforcementScac.isEmpty()) &&
-                (enforcementScac == null || enforcementScac.isEmpty()))
-            // this is a warning
+                (enforcementScac == null || enforcementScac.isEmpty())) {
+            // this is a warning, not an enforcement
+            if (enforcements.size() < 10) {
+                logger.info("Skipping message - no enforcement SCAC fields present (treating as warning)");
+            }
             return;
+        }
 
         enforcements.add(message2083);
 
-        String targetType = message2083.getString(FIELD_TARGET_TYPE);
         if (stats.containsKey(targetType)) {
             stats.replace(targetType, stats.get(targetType) + 1);
         } else {
             stats.put(targetType, 1);
         }
 
-        logger.debug("Added enforcement of type " + targetType + "; number of enforcements: " + enforcements.size());
+        logger.info("Added enforcement of type '{}'; total enforcements: {}", targetType, enforcements.size());
     }
 
     String getTemplateName() {

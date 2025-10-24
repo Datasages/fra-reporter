@@ -1,8 +1,9 @@
 package com.rockwellcollins.railwaynet.reports;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
@@ -13,8 +14,9 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 import static com.mongodb.client.model.Filters.*;
+import static com.mongodb.client.model.Sorts.*;
 
-public class MongoMessagesDatabase {
+public class MongoMessagesDatabase implements MessagesDatabase {
 
     public static final String FIELD_TRAIN_ID = "trainID";
     public static final String FIELD_SRC_ADDRESS = "srcAddress";
@@ -34,8 +36,10 @@ public class MongoMessagesDatabase {
 
     MongoMessagesDatabase(String url, String database, String collection) {
         logger.info("Initializing Mongo connection in MongoMessagesDatabase");
-        MongoClientURI uri = new MongoClientURI(url);
-        MongoClient mongoClient = new MongoClient(uri);
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(url))
+                .build();
+        MongoClient mongoClient = MongoClients.create(settings);
         MongoDatabase reportsDB = mongoClient.getDatabase(database);
         messages = reportsDB.getCollection(collection);
     }
@@ -60,7 +64,7 @@ public class MongoMessagesDatabase {
         logger.debug("Filter is ready, running request to Mongo...");
         return new MessagesIterator(messages
                 .find(filter)
-                .sort(new BasicDBObject("time", 1))
+                .sort(ascending("time"))
                 .noCursorTimeout(true)
                 .batchSize(10000)
                 .iterator());
@@ -83,7 +87,7 @@ public class MongoMessagesDatabase {
         logger.debug("Filter is ready, running request to Mongo...");
         return new MessagesIterator(messages
                 .find(filter)
-                .sort(new BasicDBObject("time", 1))
+                .sort(ascending("time"))
                 .batchSize(10000)
                 .iterator());
     }

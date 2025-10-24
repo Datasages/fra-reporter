@@ -47,12 +47,17 @@ abstract class AbstractReport {
 
         LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
 
-        if (this.initYear == 0) {
-            this.initYear = now.getYear();
-        }
+        if (this.initYear == 0 || this.initMonth == 0) {
+            // When running in first week of month, process previous month/quarter
+            LocalDateTime previousMonth = now.minusMonths(1);
 
-        if (this.initMonth == 0) {
-            this.initMonth = now.getMonthValue();
+            if (this.initYear == 0) {
+                this.initYear = previousMonth.getYear();
+            }
+
+            if (this.initMonth == 0) {
+                this.initMonth = previousMonth.getMonthValue();
+            }
         }
 
         this.messagesDatabase = new MongoMessagesDatabase(
@@ -64,7 +69,9 @@ abstract class AbstractReport {
 
         FileInputStream inputStream;
         try {
-            inputStream = new FileInputStream(getTemplateName());
+            // Check if template path is provided in config first (for testing)
+            String templatePath = config.getProperty("template.path." + getTemplateName(), getTemplateName());
+            inputStream = new FileInputStream(templatePath);
         } catch (FileNotFoundException e) {
             logger.error("Cannot find Excel template file!", e);
             throw new RuntimeException("Cannot find Excel template file!", e);
@@ -91,19 +98,20 @@ abstract class AbstractReport {
         int year = this.initYear;
         int currentMonth = this.initMonth;
 
-        if (currentMonth > 1) {
-            String month = currentMonth > 10 ? String.valueOf(currentMonth - 1) : "0" + (currentMonth - 1);
-            return year + "-" + month + "-01";
-        }
-
-        return (year - 1) + "-12-01";
+        String month = currentMonth > 9 ? String.valueOf(currentMonth) : "0" + currentMonth;
+        return year + "-" + month + "-01";
     }
 
     private String getEndOfMonth() {
         int year = this.initYear;
         int currentMonth = this.initMonth;
 
-        String month = currentMonth > 9 ? String.valueOf(currentMonth) : "0" + currentMonth;
+        if (currentMonth == 12) {
+            return (year + 1) + "-01-01";
+        }
+
+        int nextMonth = currentMonth + 1;
+        String month = nextMonth > 9 ? String.valueOf(nextMonth) : "0" + nextMonth;
         return year + "-" + month + "-01";
     }
 
@@ -111,20 +119,22 @@ abstract class AbstractReport {
         int currentMonth = this.initMonth;
         int year = this.initYear;
 
-        if (currentMonth < 4) return (year - 1) + "-10-01";
-        if (currentMonth < 7) return year + "-01-01";
-        if (currentMonth < 10) return year + "-04-01";
-        return year + "-07-01";
+        // Generate previous complete quarter
+        if (currentMonth <= 3) return (year - 1) + "-10-01";  // Q4 previous year (Oct-Dec)
+        if (currentMonth <= 6) return year + "-01-01";        // Q1 (Jan-Mar)
+        if (currentMonth <= 9) return year + "-07-01";        // Q3 (Jul-Sep)
+        return year + "-07-01";                               // Q3 (Jul-Sep)
     }
 
     private String getEndOfQuarter() {
         int currentMonth = this.initMonth;
         int year = this.initYear;
 
-        if (currentMonth < 4) return year + "-01-01";
-        if (currentMonth < 7) return year + "-04-01";
-        if (currentMonth < 10) return year + "-07-01";
-        return year + "-10-01";
+        // End of previous complete quarter
+        if (currentMonth <= 3) return year + "-01-01";        // End of Q4 previous year
+        if (currentMonth <= 6) return year + "-04-01";        // End of Q1
+        if (currentMonth <= 9) return year + "-10-01";        // End of Q3
+        return year + "-10-01";                               // End of Q3
     }
 
     public void generateMonthlyReport() {

@@ -5,8 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
@@ -40,9 +42,11 @@ public class MongoReportsDatabase {
 
     MongoReportsDatabase(Properties config) {
         logger.info("Initializing Mongo connection in MongoReportsDatabase");
-        this.baseUrl = config.getProperty("aws.S3.base.url");
-        MongoClientURI uri = new MongoClientURI(config.getProperty("reports.mongo.url"));
-        MongoClient mongoClient = new MongoClient(uri);
+        this.baseUrl = config.getProperty("aws.s3bucket.base.url");
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(config.getProperty("reports.mongo.url")))
+                .build();
+        MongoClient mongoClient = MongoClients.create(settings);
         MongoDatabase reportsDB = mongoClient.getDatabase(config.getProperty("reports.mongo.database"));
         reports = reportsDB.getCollection(config.getProperty("reports.mongo.collection"));
     }
