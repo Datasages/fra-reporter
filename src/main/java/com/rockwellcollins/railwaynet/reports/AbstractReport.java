@@ -164,8 +164,16 @@ abstract class AbstractReport {
 
     public void generateQuarterlyReport() {
 
-        if (this.disableQuarterly != null) {
+        // Check if quarterly reports are explicitly disabled
+        if ("true".equalsIgnoreCase(this.disableQuarterly)) {
             logger.info("Quarterly reports disabled in config");
+            return;
+        }
+
+        // Only generate quarterly reports in quarter boundary months (Jan, Apr, Jul, Oct)
+        int currentMonth = this.initMonth;
+        if (currentMonth != 1 && currentMonth != 4 && currentMonth != 7 && currentMonth != 10) {
+            logger.info("Not a quarter boundary month (" + currentMonth + "). Skipping quarterly report.");
             return;
         }
 
@@ -176,8 +184,9 @@ abstract class AbstractReport {
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         cal.setTime(startDT);
 
-        int year = this.initYear;
-        int quarter = (this.initMonth / 3) + 1;
+        // Use the actual quarter start date to determine year and quarter for metadata
+        int year = cal.get(Calendar.YEAR);
+        int quarter = (cal.get(Calendar.MONTH) / 3) + 1;
 
         if (mongo.quarterlyReportExists(getReportType(), year, quarter)) {
             logger.info("Quarterly report of type " + getReportType() + " for " + quarter + "/" + year + " already exists. Skipping.");

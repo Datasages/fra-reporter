@@ -1,19 +1,28 @@
 .DS_Store
 /.idea
-/build/Monthly_AMTK_PTC_Loco_Position_Report_2020_10.xlsx
-/build/Quarterly_AMTK_PTC_Loco_Position_Report_2020_3.xlsx
-/build/~$Monthly_AMTK_PTC_Loco_Position_Report_2020_10.xlsx
 /target
 /strolrscheduler.iml
-/build/Monthly_AMTK_PTC_Init_Failed_Report_2020_10.xlsx
-/build/Monthly_AMTK_PTC_Init_Failed_Report_2020_11.xlsx
-/build/Quarterly_AMTK_PTC_Init_Failed_Report_2020_3.xlsx
-/build/Monthly_AMTK_PTC_Loco_Enforcement_Report_2020_11.xlsx
-/build/Monthly_AMTK_PTC_Loco_Position_Report_2020_11.xlsx
-/build/*.jar
-/build/run.log
-/build/config.document-db.properties
 bin/**
 .settings/**
+
+# Build artifacts
+/build/*.jar
+/build/run.log
+
+# Generated report files (UUID-named xlsx files)
+????????-????-????-????-????????????.xlsx
+
+# Generated reports (keep templates, ignore generated)
+/build/Monthly_*.xlsx
+/build/Quarterly_*.xlsx
+/build/~$*.xlsx
+
+# Config files with credentials (keep templates/samples)
+/build/config.document-db.properties
+/build/config.properties
+
+# Temp files
+*.temp
+test-report.md
 
 

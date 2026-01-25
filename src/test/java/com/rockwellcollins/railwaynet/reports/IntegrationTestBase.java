@@ -46,7 +46,7 @@ public abstract class IntegrationTestBase {
         mongoContainer = tempMongo;
 
         @SuppressWarnings("resource")
-        LocalStackContainer tempLocalStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+        LocalStackContainer tempLocalStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:latest"))
                 .withServices(LocalStackContainer.Service.S3)
                 .withReuse(false);
         localStackContainer = tempLocalStack;

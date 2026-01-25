@@ -1,11 +1,13 @@
-# Multi-stage build for FRA Report Generator
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# Dockerfile for FRA Report Generator - Monthly Automated Runs
+# Multi-stage build with MongoDB tools for sync
+
+FROM eclipse-temurin:17-jdk AS builder
 
 # Install build dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     maven \
     git \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -27,29 +29,45 @@ RUN ls -la target/ && \
     find target -name "*-jar-with-dependencies.jar" -exec echo "Built JAR: {}" \;
 
 # Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 
-# Install runtime dependencies
-RUN apk add --no-cache \
+# Install runtime dependencies including MongoDB tools for sync
+# Download MongoDB tools directly since apt packages may not be available for all architectures
+RUN apt-get update && apt-get install -y \
     curl \
     bash \
     tzdata \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ARCH=$(dpkg --print-architecture) \
+    && if [ "$ARCH" = "amd64" ]; then \
+         curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.10.0.deb -o /tmp/mongodb-tools.deb; \
+       elif [ "$ARCH" = "arm64" ]; then \
+         curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-arm64-100.10.0.deb -o /tmp/mongodb-tools.deb; \
+       fi \
+    && dpkg -i /tmp/mongodb-tools.deb \
+    && rm /tmp/mongodb-tools.deb
 
 # Create app user for security
-RUN addgroup -g 1001 appgroup && \
-    adduser -D -u 1001 -G appgroup appuser
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -m appuser
 
 # Set working directory
-WORKDIR /app
+WORKDIR /opt/fra-report-generator
 
 # Copy the built JAR from builder stage
-COPY --from=builder /app/target/fra-report-generator-*-jar-with-dependencies.jar app.jar
+COPY --from=builder /app/target/fra-report-generator-*-jar-with-dependencies.jar fra-report-generator.jar
 
-# Copy Excel templates from host build directory
-COPY build/ ./build/
+# Copy Excel templates
+COPY build/*.xlsx ./
 
-# Create a default log4j2.xml if it doesn't exist
+# Copy configuration template
+COPY build/config.properties.template config.properties
+
+# Copy monthly startup script
+COPY run-monthly.sh ./run-monthly.sh
+RUN chmod +x ./run-monthly.sh
+
+# Create a default log4j2.xml
 RUN echo '<?xml version="1.0" encoding="UTF-8"?>\
 <Configuration status="WARN">\
   <Appenders>\
@@ -64,63 +82,34 @@ RUN echo '<?xml version="1.0" encoding="UTF-8"?>\
   </Loggers>\
 </Configuration>' > log4j2.xml
 
-# Copy default configuration as template
-COPY --from=builder /app/src/main/resources/config.properties ./config.properties.template
-
-# Create startup script that handles configuration
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Use environment variables to create config if not provided\n\
-if [ ! -f "/app/config.properties" ]; then\n\
-  echo "Creating config.properties from environment variables..."\n\
-  cat > /app/config.properties << EOF\n\
-reports.mongo.url=${REPORTS_MONGO_URL:-mongodb://localhost:27017/}\n\
-reports.mongo.database=${REPORTS_MONGO_DATABASE:-reportMetaData}\n\
-reports.mongo.collection=${REPORTS_MONGO_COLLECTION:-reports}\n\
-\n\
-messages.mongo.url=${MESSAGES_MONGO_URL:-mongodb://localhost:27017/}\n\
-messages.mongo.database=${MESSAGES_MONGO_DATABASE:-reports}\n\
-messages.mongo.collection=${MESSAGES_MONGO_COLLECTION:-messages}\n\
-\n\
-aws.region=${AWS_REGION:-us-east-1}\n\
-aws.api.S3bucket=${AWS_S3_BUCKET:-rwn.amtk.reports}\n\
-EOF\n\
-fi\n\
-\n\
-echo "Starting FRA Report Generator..."\n\
-echo "Java version: $(java -version 2>&1 | head -n1)"\n\
-echo "Available memory: $(free -h | grep Mem | awk '\''{print $2}'\'')" || echo "Memory info not available"\n\
-echo "Java options: $JAVA_OPTS"\n\
-\n\
-# Start the application\n\
-exec java $JAVA_OPTS -jar app.jar "$@"' > /app/start.sh
-
-# Make startup script executable
-RUN chmod +x /app/start.sh
+# Create temp directory for mongodump
+RUN mkdir -p /tmp && chown -R appuser:appgroup /tmp
 
 # Change ownership to app user
-RUN chown -R appuser:appgroup /app
+RUN chown -R appuser:appgroup /opt/fra-report-generator
 
 # Switch to app user
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD pgrep -f "java.*app.jar" > /dev/null || exit 1
-
 # Set default JVM options optimized for containers
-ENV JAVA_OPTS="-Xmx3g -Xms1g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseContainerSupport -Dlog4j.configurationFile=/app/log4j2.xml"
+ENV JAVA_OPTS="-Xmx3g -Xms1g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseContainerSupport -Dlog4j.configurationFile=/opt/fra-report-generator/log4j2.xml"
 
 # Set timezone
 ENV TZ=UTC
 
-# Entry point using startup script
-ENTRYPOINT ["/app/start.sh"]
+# Environment variables for configuration (can be overridden at runtime)
+ENV BASE_DIR=/opt/fra-report-generator
+ENV DOCDB_URI=""
+ENV MONGO_URI="mongodb://localhost:27017"
+ENV DB_NAME="amtk_reports"
+ENV MESSAGES_COLLECTION="amtk_messages"
+ENV AWS_ENDPOINT_URL=""
+
+# Entry point using monthly startup script
+ENTRYPOINT ["/opt/fra-report-generator/run-monthly.sh"]
 
 # Metadata
 LABEL maintainer="Railway Network Team" \
-      description="FRA Report Generator - Railway Regulatory Reports Generator" \
-      version="1.0.0" \
-      java.version="17" \
-      build.date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+      description="FRA Report Generator - Monthly Automated Runs" \
+      version="monthly" \
+      java.version="17"

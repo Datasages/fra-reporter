@@ -1,0 +1,28 @@
+init.time = 30
+
+# Set to 0 for auto-detection of previous month
+init.year = 0
+init.month = 0
+
+org.slf4j.simpleLogger.defaultLogLevel = trace
+
+reports.scac = amtk
+reports.scac.cibos = amtk.b:cibos
+reports.scac.gbos = "amtk.b:gb.nec", "amtk.b:gb.me"
+reports.railroadname = Amtrak
+
+reports.mongo.batchsize = 100000
+# Report metadata goes to DocumentDB - UPDATE THIS URL for production
+reports.mongo.url = mongodb://YOUR_DOCDB_HOST:27017/?authSource=admin
+reports.mongo.database = amtk_reports
+reports.mongo.collection = amtk_reports
+
+# Messages come from synced MongoDB - UPDATE THIS URL for production
+messages.mongo.url = mongodb://localhost:27017
+messages.mongo.database = amtk_reports
+messages.mongo.collection = amtk_messages
+
+aws.api.region = us-east-1
+aws.api.S3bucket = rwn-amtk-report-prod
+aws.s3bucket.report = rwn-amtk-report-prod
+aws.s3bucket.base.url = https://s3.amazonaws.com/rwn-amtk-report-prod/

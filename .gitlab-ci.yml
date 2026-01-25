@@ -1,0 +1,179 @@
+image: maven:3.8.5-openjdk-17
+
+variables:
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  MAVEN_CLI_OPTS: '-B --no-transfer-progress'
+  REGISTRY: "registry-gitlab.corp.wabtec.com/railwaynet/fra-report-generator"
+  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+
+services:
+  - name: docker:dind
+    command: ["--tls=false"]
+  - name: mongo:6.0
+    alias: mongodb
+  - name: localstack/localstack:latest
+    alias: localstack
+
+stages:
+  - build
+  - test
+  - integration-test
+  - docker-build
+  - push-image
+
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .m2/repository/
+
+# Build and compile the application
+maven-build:
+  stage: build
+  script:
+    - printenv | sort
+    - mvn clean compile ${MAVEN_CLI_OPTS}
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+
+# Run unit tests
+unit-tests:
+  stage: test
+  dependencies:
+    - maven-build
+  script:
+    - mvn test ${MAVEN_CLI_OPTS} -Dtest="*Test" -DfailIfNoTests=false
+  artifacts:
+    paths:
+      - target/surefire-reports/
+    reports:
+      junit: target/surefire-reports/*.xml
+    expire_in: 1 week
+
+# Run integration tests with LocalStack and MongoDB
+integration-tests:
+  stage: integration-test
+  dependencies:
+    - maven-build
+  variables:
+    # MongoDB service connection
+    MONGO_URI: "mongodb://mongodb:27017"
+    # LocalStack S3 endpoint
+    AWS_ENDPOINT_URL: "http://localstack:4566"
+    AWS_ACCESS_KEY_ID: "test"
+    AWS_SECRET_ACCESS_KEY: "test"
+    AWS_DEFAULT_REGION: "us-east-1"
+  before_script:
+    # Wait for services to be ready
+    - echo "Waiting for MongoDB to be ready..."
+    - |
+      for i in $(seq 1 30); do
+        if nc -z mongodb 27017 2>/dev/null; then
+          echo "MongoDB is ready"
+          break
+        fi
+        echo "Waiting for MongoDB... ($i/30)"
+        sleep 2
+      done
+    - echo "Waiting for LocalStack to be ready..."
+    - |
+      for i in $(seq 1 30); do
+        if curl -s http://localstack:4566/_localstack/health | grep -q '"s3": "running"'; then
+          echo "LocalStack is ready"
+          break
+        fi
+        echo "Waiting for LocalStack... ($i/30)"
+        sleep 2
+      done
+    # Create S3 bucket in LocalStack
+    - apt-get update && apt-get install -y awscli
+    - aws --endpoint-url=http://localstack:4566 s3 mb s3://rwn-amtk-report-prod || true
+    # Seed test data into MongoDB
+    - apt-get install -y mongodb-clients || apt-get install -y mongosh || true
+  script:
+    - mvn test ${MAVEN_CLI_OPTS} -Dtest="*IntegrationTest" -DfailIfNoTests=false
+  artifacts:
+    paths:
+      - target/surefire-reports/
+    reports:
+      junit: target/surefire-reports/*.xml
+    expire_in: 1 week
+  allow_failure: false
+
+# Package the application
+maven-package:
+  stage: integration-test
+  dependencies:
+    - maven-build
+  script:
+    - mvn package ${MAVEN_CLI_OPTS} -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+      - target/*-jar-with-dependencies.jar
+    expire_in: 1 week
+
+# Build Docker image
+docker-build:
+  stage: docker-build
+  image: docker:24.0
+  dependencies:
+    - maven-package
+  before_script:
+    - apk add --no-cache bash
+  script:
+    - docker info
+    - docker build -t ${REGISTRY}:${IMAGE_TAG} .
+    - docker build -t ${REGISTRY}:latest .
+    # Tag with branch name for non-main branches
+    - |
+      if [ "${CI_COMMIT_BRANCH}" != "main" ]; then
+        docker tag ${REGISTRY}:${IMAGE_TAG} ${REGISTRY}:${CI_COMMIT_REF_SLUG}
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
+
+# Push Docker image to registry
+push-image:
+  stage: push-image
+  image: docker:24.0
+  dependencies:
+    - docker-build
+  before_script:
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > ~/.docker/config.json
+  script:
+    - docker push ${REGISTRY}:${IMAGE_TAG}
+    - docker push ${REGISTRY}:latest
+    # Push branch tag for non-main branches
+    - |
+      if [ "${CI_COMMIT_BRANCH}" != "main" ]; then
+        docker push ${REGISTRY}:${CI_COMMIT_REF_SLUG}
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+
+# Deploy to production (main branch only)
+deploy-production:
+  stage: push-image
+  image: docker:24.0
+  dependencies:
+    - push-image
+  script:
+    - echo "Docker image pushed to ${REGISTRY}:${IMAGE_TAG}"
+    - echo "To run the monthly report generator:"
+    - echo "  docker pull ${REGISTRY}:latest"
+    - echo "  docker run --network host \\"
+    - echo "    -e DOCDB_URI=<your-docdb-uri> \\"
+    - echo "    -e MONGO_URI=<your-mongodb-uri> \\"
+    - echo "    ${REGISTRY}:latest"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
