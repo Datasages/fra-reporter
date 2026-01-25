@@ -3,6 +3,7 @@
 /target
 /strolrscheduler.iml
 bin/**
+CLAUDE.md
 .settings/**
 
 # Build artifacts
