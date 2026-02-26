@@ -21,6 +21,7 @@ CLAUDE.md
 # Config files with credentials (keep templates/samples)
 /build/config.document-db.properties
 /build/config.properties
+src/main/resources/config.properties
 
 # Temp files
 *.temp
