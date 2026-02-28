@@ -6,7 +6,7 @@
 
     <groupId>net.railwaynet.logdelivery</groupId>
     <artifactId>fra-report-generator</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.3.3</version>
     <name>FRA Report Generator</name>
     <description>Railway locomotive position and enforcement reports generator for FRA regulatory compliance</description>
     <build>

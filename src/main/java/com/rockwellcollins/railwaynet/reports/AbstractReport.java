@@ -42,8 +42,16 @@ abstract class AbstractReport {
 
         this.disableQuarterly = config.getProperty("init.disable.quarterly", null);
 
-        this.initYear = Integer.parseInt(config.getProperty("init.year", "0"));
-        this.initMonth = Integer.parseInt(config.getProperty("init.month", "0"));
+        // Check environment variables first, then fall back to config file
+        String envYear = System.getenv("INIT_YEAR");
+        String envMonth = System.getenv("INIT_MONTH");
+
+        this.initYear = (envYear != null && !envYear.isEmpty())
+            ? Integer.parseInt(envYear)
+            : Integer.parseInt(config.getProperty("init.year", "0"));
+        this.initMonth = (envMonth != null && !envMonth.isEmpty())
+            ? Integer.parseInt(envMonth)
+            : Integer.parseInt(config.getProperty("init.month", "0"));
 
         LocalDateTime now = LocalDateTime.now(ZoneId.of("UTC"));
 
@@ -59,6 +67,15 @@ abstract class AbstractReport {
                 this.initMonth = previousMonth.getMonthValue();
             }
         }
+
+        // Validate that the specified month has completed
+        LocalDateTime specifiedMonthEnd = LocalDateTime.of(this.initYear, this.initMonth, 1, 0, 0).plusMonths(1);
+        if (now.isBefore(specifiedMonthEnd)) {
+            throw new RuntimeException("Cannot generate reports for " + this.initYear + "-" + this.initMonth +
+                ": month has not completed yet. Current date: " + now.toLocalDate());
+        }
+
+        logger.info("Generating reports for " + this.initYear + "-" + this.initMonth);
 
         this.messagesDatabase = new MongoMessagesDatabase(
                 config.getProperty("messages.mongo.url"),
@@ -119,22 +136,22 @@ abstract class AbstractReport {
         int currentMonth = this.initMonth;
         int year = this.initYear;
 
-        // Generate previous complete quarter
-        if (currentMonth <= 3) return (year - 1) + "-10-01";  // Q4 previous year (Oct-Dec)
-        if (currentMonth <= 6) return year + "-01-01";        // Q1 (Jan-Mar)
+        // Return start of the quarter containing the current month
+        if (currentMonth <= 3) return year + "-01-01";        // Q1 (Jan-Mar)
+        if (currentMonth <= 6) return year + "-04-01";        // Q2 (Apr-Jun)
         if (currentMonth <= 9) return year + "-07-01";        // Q3 (Jul-Sep)
-        return year + "-07-01";                               // Q3 (Jul-Sep)
+        return year + "-10-01";                               // Q4 (Oct-Dec)
     }
 
     private String getEndOfQuarter() {
         int currentMonth = this.initMonth;
         int year = this.initYear;
 
-        // End of previous complete quarter
-        if (currentMonth <= 3) return year + "-01-01";        // End of Q4 previous year
-        if (currentMonth <= 6) return year + "-04-01";        // End of Q1
+        // Return end of the quarter containing the current month
+        if (currentMonth <= 3) return year + "-04-01";        // End of Q1
+        if (currentMonth <= 6) return year + "-07-01";        // End of Q2
         if (currentMonth <= 9) return year + "-10-01";        // End of Q3
-        return year + "-10-01";                               // End of Q3
+        return (year + 1) + "-01-01";                         // End of Q4
     }
 
     public void generateMonthlyReport() {
@@ -170,10 +187,10 @@ abstract class AbstractReport {
             return;
         }
 
-        // Only generate quarterly reports in quarter boundary months (Jan, Apr, Jul, Oct)
+        // Only generate quarterly reports when month is the last month of a quarter (Mar, Jun, Sep, Dec)
         int currentMonth = this.initMonth;
-        if (currentMonth != 1 && currentMonth != 4 && currentMonth != 7 && currentMonth != 10) {
-            logger.info("Not a quarter boundary month (" + currentMonth + "). Skipping quarterly report.");
+        if (currentMonth != 3 && currentMonth != 6 && currentMonth != 9 && currentMonth != 12) {
+            logger.info("Not a quarter-end month (" + currentMonth + "). Skipping quarterly report.");
             return;
         }
 

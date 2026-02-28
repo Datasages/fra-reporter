@@ -1,5 +1,5 @@
-# Dockerfile for FRA Report Generator - Monthly Automated Runs
-# Multi-stage build with MongoDB tools for sync
+# Dockerfile for FRA Report Generator - Report Only (No Sync)
+# Use this when data is already present in MongoDB
 
 FROM eclipse-temurin:17-jdk AS builder
 
@@ -28,29 +28,14 @@ RUN mvn clean package -DskipTests -B
 RUN ls -la target/ && \
     find target -name "*-jar-with-dependencies.jar" -exec echo "Built JAR: {}" \;
 
-# Runtime stage
+# Runtime stage - minimal image without MongoDB tools
 FROM eclipse-temurin:17-jre
 
-# Install runtime dependencies including MongoDB tools and AWS CLI for sync
-# Download MongoDB tools directly since apt packages may not be available for all architectures
+# Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
     bash \
     tzdata \
-    unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && ARCH=$(dpkg --print-architecture) \
-    && if [ "$ARCH" = "amd64" ]; then \
-         curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.10.0.deb -o /tmp/mongodb-tools.deb; \
-         curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip; \
-       elif [ "$ARCH" = "arm64" ]; then \
-         curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-arm64-100.10.0.deb -o /tmp/mongodb-tools.deb; \
-         curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip; \
-       fi \
-    && dpkg -i /tmp/mongodb-tools.deb \
-    && unzip /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install \
-    && rm -rf /tmp/mongodb-tools.deb /tmp/awscliv2.zip /tmp/aws
+    && rm -rf /var/lib/apt/lists/*
 
 # Create app user for security
 RUN groupadd -g 1001 appgroup && \
@@ -65,12 +50,12 @@ COPY --from=builder /app/target/fra-report-generator-*-jar-with-dependencies.jar
 # Copy Excel templates
 COPY build/*.xlsx ./
 
-# Copy configuration template
+# Copy configuration template (will be overwritten by entrypoint)
 COPY build/config.properties.template config.properties
 
-# Copy monthly startup script
-COPY run-monthly.sh ./run-monthly.sh
-RUN chmod +x ./run-monthly.sh
+# Copy report-only startup script
+COPY run-report-only.sh ./run-report-only.sh
+RUN chmod +x ./run-report-only.sh
 
 # Create a default log4j2.xml
 RUN echo '<?xml version="1.0" encoding="UTF-8"?>\
@@ -86,9 +71,6 @@ RUN echo '<?xml version="1.0" encoding="UTF-8"?>\
     </Root>\
   </Loggers>\
 </Configuration>' > log4j2.xml
-
-# Create temp directory for mongodump
-RUN mkdir -p /tmp && chown -R appuser:appgroup /tmp
 
 # Change ownership to app user
 RUN chown -R appuser:appgroup /opt/fra-report-generator
@@ -107,17 +89,14 @@ ENV BASE_DIR=/opt/fra-report-generator
 ENV DOCDB_URI=""
 ENV MONGO_URI="mongodb://localhost:27017"
 ENV DB_NAME="amtk_reports"
-ENV MESSAGES_COLLECTION="amtk_messages"
 ENV AWS_REGION="us-east-1"
 ENV S3_BUCKET="rwn-amtk-report-prod"
-# Note: Do NOT set AWS_ENDPOINT_URL="" here - the AWS SDK reads it directly
-# and will fail if it's an empty string. Only set when using LocalStack.
 
-# Entry point using monthly startup script
-ENTRYPOINT ["/opt/fra-report-generator/run-monthly.sh"]
+# Entry point using report-only startup script
+ENTRYPOINT ["/opt/fra-report-generator/run-report-only.sh"]
 
 # Metadata
 LABEL maintainer="Railway Network Team" \
-      description="FRA Report Generator - Monthly Automated Runs" \
-      version="monthly" \
+      description="FRA Report Generator - Report Only (No Sync)" \
+      version="nocopy" \
       java.version="17"
