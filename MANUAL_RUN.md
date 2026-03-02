@@ -193,6 +193,81 @@ docker rm -f fra-jul-2025
 
 ---
 
+## Automated Monthly Runs (Cron)
+
+The report generator runs automatically via cron on the 2nd of each month at 3:00 AM.
+
+### Cron Schedule
+
+```
+0 3 2 * *
+```
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| Minute | 0 | At minute 0 |
+| Hour | 3 | At 3:00 AM |
+| Day | 2 | On the 2nd of the month |
+| Month | * | Every month |
+| Weekday | * | Any day of week |
+
+Running on the 2nd ensures the previous month has fully completed. The container auto-detects the previous month, so running on Feb 2nd processes January data.
+
+### Cron Job Script
+
+Location: `/usr/bin/fra-reporter`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Generate unique container name: AUG-2025-20250801143045
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+MONTH=$(date +%b | tr '[:lower:]' '[:upper:]')
+YEAR=$(date +%Y)
+CONTAINER_NAME="${MONTH}-${YEAR}-${TIMESTAMP}"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting FRA report generation (container: $CONTAINER_NAME)" >> /var/log/fra-report.log
+
+docker run --rm \
+  --network host \
+  --name "$CONTAINER_NAME" \
+  -e MONGO_URI="mongodb://localhost:27017" \
+  -e DB_NAME="amtk_reports" \
+  -e AWS_REGION="us-east-1" \
+  petekofod/fra-report-generator:v1.3.7 \
+  >> /var/log/fra-report.log 2>&1
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Finished (container: $CONTAINER_NAME)" >> /var/log/fra-report.log
+```
+
+### Log File
+
+All output is logged to `/var/log/fra-report.log`.
+
+```bash
+# View recent log entries
+tail -100 /var/log/fra-report.log
+
+# Follow log in real-time
+tail -f /var/log/fra-report.log
+
+# Check for errors
+grep -i error /var/log/fra-report.log
+```
+
+### Verify Cron is Running
+
+```bash
+# Check crontab
+crontab -l
+
+# Check if cron service is running
+systemctl status cron
+```
+
+---
+
 ## Environment Variables Reference
 
 | Variable | Required | Default | Description |
