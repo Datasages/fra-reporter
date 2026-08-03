@@ -6,6 +6,9 @@ bin/**
 CLAUDE.md
 .settings/**
 
+/tasks/
+/decisions/
+
 # Build artifacts
 /build/*.jar
 /build/run.log
