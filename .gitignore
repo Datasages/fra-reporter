@@ -6,9 +6,6 @@ bin/**
 CLAUDE.md
 .settings/**
 
-# Claude Code session artifacts — external client repo, must never sync to
-# Wabtec's GitLab. WORLD/CONTEXT docs and decision journal live in the
-# Obsidian vault instead; this is a defense-in-depth backstop.
 /tasks/
 /decisions/
 
