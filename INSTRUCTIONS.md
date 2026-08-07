@@ -281,6 +281,11 @@ Edit `pom.xml` and update the version:
 <version>1.3.0</version>
 ```
 
+> Check with the platform team whether `java-release-flow` bumps the version
+> itself. If it does, skip this step — bumping by hand would conflict with it.
+> Either way the built JAR filename is unaffected: `<finalName>` pins it to
+> `fra-report-generator`, independent of version.
+
 ### 2. Commit and Push
 
 ```bash
@@ -294,17 +299,18 @@ git push origin main
 Verify the build passes at:
 `https://gitlab.corp.wabtec.com/railwaynet/fra-reporter/-/pipelines`
 
-### 4. Create and Push Tag
+### 4. Start the Release Pipeline
 
-```bash
-git tag v1.3.0
-git push origin refs/tags/v1.3.0
-```
+Releases are **manually triggered**, not tag-triggered. Pushing a tag starts no
+pipeline.
 
-This triggers:
-- Docker image pushed as `fra-reporter:v1.3.0`
-- Docker image pushed as `fra-reporter:latest`
-- GitLab Release created
+In the GitLab UI: **Build → Pipelines → Run pipeline**, with the default branch
+selected. That satisfies the `java-release-flow` rule
+(`$CI_PIPELINE_SOURCE == "web"` on `$CI_DEFAULT_BRANCH`).
+
+The release flow builds the JAR, runs the Trivy/CATO scan, builds the image from
+`Dockerfile.ci`, and publishes. Confirm the resulting image tag with the platform
+team — the tag scheme is owned by the component, not by this repo.
 
 ### 5. Update AWS Batch (if needed)
 

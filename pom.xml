@@ -11,9 +11,10 @@
     <description>Railway locomotive position and enforcement reports generator for FRA regulatory compliance</description>
     <build>
         <!-- Pinned so CI has a version-independent artifact path. The GitLab
-             java-release-flow component takes jar_file_base as a static string
-             and bumps ${project.version} during a release, so a version-stamped
-             jar name would break the first release cut. Produces:
+             java-release-flow component takes jar_file_base as a STATIC string,
+             while ${project.version} changes on every release — so a
+             version-stamped jar name would silently stop matching the moment the
+             version moves. Produces:
                target/fra-report-generator.jar                       (thin)
                target/fra-report-generator-jar-with-dependencies.jar (fat) -->
         <finalName>fra-report-generator</finalName>
@@ -35,6 +36,24 @@
                 <configuration>
                     <reportFormat>plain</reportFormat>
                     <printSummary>true</printSummary>
+                    <!-- Which tests are unit tests belongs in the build, not in a CI
+                         string. It previously lived only in the GitLab unit-tests job
+                         as -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest" and was
+                         lost when that job was replaced by the java-build-test
+                         component. Surefire's default include is **/*Test.java, which
+                         matches the Testcontainers-backed *IntegrationTest classes
+                         (they need a Docker daemon) and PerformanceBenchmarkTest — so
+                         without these excludes a plain `mvn test` fails on any runner
+                         without Docker.
+
+                         -Dtest overrides includes AND excludes, so the documented
+                         commands still work:
+                           mvn test -Dtest="*IntegrationTest"   (needs Docker)
+                           mvn test -Dtest="*BenchmarkTest"     (slow) -->
+                    <excludes>
+                        <exclude>**/*IntegrationTest.java</exclude>
+                        <exclude>**/*BenchmarkTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
 

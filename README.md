@@ -118,13 +118,22 @@ aws.s3bucket.report = rwn-amtk-report-prod
 
 ## GitLab CI/CD
 
-The pipeline (`.gitlab-ci.yml`) includes:
+The pipeline (`.gitlab-ci.yml`) is assembled from shared RailwayNet CI
+components rather than hand-rolled jobs, so security scanning is inherited from
+the platform:
 
-1. **build**: Compile Java application
-2. **test**: Run unit tests
-3. **docker-build-push**: Build and push to GitLab Container Registry
+| Trigger | Component | What it does |
+|---|---|---|
+| push, merge request | `java-build-test` | Compile + unit tests |
+| merge request (non-release) | `sonarqube` | SAST scan + quality gate |
+| manual, default branch | `java-release-flow` | Build, Trivy/CATO scan, image build + push, release |
 
-Images are pushed to: `registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter`
+Releases are **manually started** — trigger a pipeline from the GitLab UI on the
+default branch. There is no tag-triggered or push-triggered image build.
+
+Image publishing is owned by `java-release-flow`; confirm the destination
+registry and tag scheme with the platform team before pinning an image tag in
+Terraform.
 
 ## AWS Deployment
 
