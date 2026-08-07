@@ -1,35 +1,17 @@
-# Dockerfile for FRA Report Generator - Monthly Automated Runs
-# Multi-stage build with MongoDB tools for sync
+# Dockerfile for FRA Report Generator — GitLab CI (java-release-flow)
+#
+# Runtime-only. The java-release-flow component builds the fat JAR with Maven
+# BEFORE calling docker build, then passes JAR_FILE_BASE / JDK_IMAGE in as
+# build args. That is why this file has no builder stage — unlike ./Dockerfile,
+# which compiles from source and is used for local and AWS Batch builds.
+#
+# Keep the runtime layers below in sync with ./Dockerfile.
 
-FROM eclipse-temurin:17-jdk AS builder
+ARG JDK_IMAGE
+FROM ${JDK_IMAGE}
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    maven \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy Maven files first for better layer caching
-COPY pom.xml ./
-
-# Download dependencies (this layer will be cached unless pom.xml changes)
-RUN mvn dependency:go-offline -B
-
-# Copy source code
-COPY src ./src
-
-# Build the application (skip tests - they require external dependencies)
-RUN mvn clean package -DskipTests -B
-
-# Verify JAR was created
-RUN ls -la target/ && \
-    find target -name "*-jar-with-dependencies.jar" -exec echo "Built JAR: {}" \;
-
-# Runtime stage
-FROM eclipse-temurin:17-jre
+# Re-declare after FROM — ARGs declared before FROM are not in build-stage scope.
+ARG JAR_FILE_BASE
 
 # Install runtime dependencies including MongoDB tools and AWS CLI for sync
 # Download MongoDB tools directly since apt packages may not be available for all architectures
@@ -59,8 +41,9 @@ RUN groupadd -g 1001 appgroup && \
 # Set working directory
 WORKDIR /opt/fra-report-generator
 
-# Copy the built JAR from builder stage
-COPY --from=builder /app/target/fra-report-generator-jar-with-dependencies.jar fra-report-generator.jar
+# Copy the pre-built fat JAR produced by the Maven stage of java-release-flow.
+# run-monthly.sh resolves the jar at a fixed name, so it is renamed on copy.
+COPY ${JAR_FILE_BASE}.jar fra-report-generator.jar
 
 # Copy Excel templates
 COPY build/*.xlsx ./

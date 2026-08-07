@@ -72,7 +72,7 @@ docker build -t fra-report-generator .
 
 ```bash
 # With config file
-java -jar target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/fra-report-generator-jar-with-dependencies.jar
 
 # With Docker
 docker run \

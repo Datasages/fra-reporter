@@ -10,6 +10,13 @@
     <name>FRA Report Generator</name>
     <description>Railway locomotive position and enforcement reports generator for FRA regulatory compliance</description>
     <build>
+        <!-- Pinned so CI has a version-independent artifact path. The GitLab
+             java-release-flow component takes jar_file_base as a static string
+             and bumps ${project.version} during a release, so a version-stamped
+             jar name would break the first release cut. Produces:
+               target/fra-report-generator.jar                       (thin)
+               target/fra-report-generator-jar-with-dependencies.jar (fat) -->
+        <finalName>fra-report-generator</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

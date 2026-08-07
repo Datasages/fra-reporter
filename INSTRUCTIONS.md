@@ -50,7 +50,7 @@ mvn clean package
 mvn test -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest"
 ```
 
-The built JAR will be at: `target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar`
+The built JAR will be at: `target/fra-report-generator-jar-with-dependencies.jar`
 
 ### Build Docker Image
 
@@ -95,7 +95,7 @@ docker build -t fra-report-generator:v1.3.0 .
 2. **Run the application**
    ```bash
    cd build
-   java -jar ../target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar
+   java -jar ../target/fra-report-generator-jar-with-dependencies.jar
    ```
 
 ### Option 2: Run with Docker
