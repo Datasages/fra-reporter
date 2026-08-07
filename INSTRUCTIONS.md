@@ -321,10 +321,12 @@ team — the tag scheme is owned by the component, not by this repo.
 
 ### 5. Update AWS Batch (if needed)
 
-If using a specific version in Terraform:
+If pinning a specific image in Terraform, use the tag confirmed in step 4 — the
+old `v1.3.0`-style tags came from the deleted `docker-build-push` job and are no
+longer produced:
 ```hcl
 variable "fra_reporter_image_tag" {
-  default = "v1.3.0"
+  default = "<tag-confirmed-in-step-4>"
 }
 ```
 
@@ -386,7 +388,10 @@ To run for a specific month (e.g., December 2025):
    init.month = 12
    ```
 
-2. Run the application:
+2. Run the application (this is the in-container name — the image renames the
+   fat JAR to `fra-report-generator.jar`). Running from a local checkout
+   instead, use `../target/fra-report-generator-jar-with-dependencies.jar`;
+   `target/fra-report-generator.jar` is the thin JAR and has no `Main-Class`:
    ```bash
    java -jar fra-report-generator.jar
    ```
