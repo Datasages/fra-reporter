@@ -1,98 +1,98 @@
-image: maven:3.8.5-openjdk-17
+# FRA Report Generator — GitLab CI/CD
+#
+# Uses the shared RailwayNet CI components so that security scanning
+# (CATO/Trivy via java-release-flow, SonarQube SAST) is inherited from the
+# platform rather than hand-rolled per project.
+#
+# Pipeline shape:
+#   push / MR            -> java-build-test  (compile + unit tests)
+#   MR (non-release)     -> sonarqube        (SAST + quality gate)
+#   manual on default br -> java-release-flow (build, Trivy/CATO scan,
+#                                              image build + push, release)
+
+# Untagged runners can inadvertently break a job
+default:
+  tags:
+    - latest
 
 variables:
-  DOCKER_HOST: tcp://docker:2375/
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: ""
+  GIT_STRATEGY: fetch
+
+  # Java build and release variables
+  #
+  # No -s ci_settings.xml here, unlike the ris sample, for two independent
+  # reasons — both must stay true for this to remain correct:
+  #   1. Nothing to publish. fra-reporter has no <distributionManagement> in
+  #      pom.xml; it ships a container image, not a Maven artifact. The ris
+  #      ci_settings.xml exists to supply JFrog credentials for publishing.
+  #   2. Nothing to resolve through. No internal Wabtec Maven mirror is in use
+  #      for this project — the previous pipeline resolved from the default
+  #      public repositories with no settings file and built successfully.
+  # Add the settings file back if either changes — i.e. if java-release-flow
+  # runs mvn deploy, or if an internal mirror is introduced.
   MAVEN_CLI_OPTS: '-B --no-transfer-progress'
+  MAVEN_RELEASE_IMAGE: wcir.wabtec.com/docker.io/maven:3.9.9-eclipse-temurin-17
 
-stages:
-  - build
-  - test
-  - docker-build
-  - release
+  # The below are passed to the Dockerfile build as build args.
+  # They MUST match what the output jar file is and the JRE used to run it.
+  #
+  # jar name is pinned by <finalName> in pom.xml — do NOT put the project
+  # version in this path. This value is static while ${project.version} moves,
+  # so a version-stamped path stops matching the moment the version changes.
+  JAR_FILE_BASE: target/fra-report-generator-jar-with-dependencies
+  # Runtime base image (the component's jre_base_image input), NOT the build
+  # JDK — that is MAVEN_RELEASE_IMAGE above. Java 17 because pom.xml targets 17.
+  # Stays Debian-based because run-monthly.sh needs mongodb-database-tools and
+  # the AWS CLI; Dockerfile.ci installs those from a downloaded .deb and zip
+  # respectively (apt supplies only curl/bash/tzdata/unzip).
+  JRE_BASE_IMAGE: wcir.wabtec.com/docker.io/eclipse-temurin:17-jre
 
-cache:
-  key: "${CI_COMMIT_REF_SLUG}"
-  paths:
-    - .m2/repository/
+  # CATO scan settings
+  TRIVY_AC_REPORT_PRODUCT: "ST-RailwayNet"
+  TRIVY_AC_REPORT_SUBPRODUCT: $CI_PROJECT_NAME
 
-# Build and compile the application
-maven-build:
-  stage: build
-  script:
-    - mvn clean compile ${MAVEN_CLI_OPTS}
-  artifacts:
-    paths:
-      - target/
-    expire_in: 1 hour
+include:
+  # Running a release flow is a manually started pipeline.
+  #
+  # @HEAD tracks the tip of the component project's default branch, matching the
+  # convention in the ris project. Accepted deliberately rather than pinned: it
+  # means a change landing in the shared component repo takes effect here with no
+  # commit in this repo and no way to reproduce an earlier build — which matters
+  # because this component holds the registry credential and builds the image that
+  # reaches production. Pin to a released version if RailwayNet publishes tags.
+  - component: $CI_SERVER_FQDN/RailwayNet/ci-components/java-release-flow@HEAD
+    rules:
+      - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      - if: '$CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      - when: never
+    inputs:
+      dockerfile_path: $CI_PROJECT_DIR/Dockerfile.ci
+      maven_build_image: $MAVEN_RELEASE_IMAGE
+      maven_cli_opts: $MAVEN_CLI_OPTS
+      jre_base_image: $JRE_BASE_IMAGE
+      jar_file_base: $JAR_FILE_BASE
+      # Single-module project at the repo root (the ris sample is multi-module
+      # under ris/, hence start_dir: ris there).
+      start_dir: .
+      # Things to pass through to CATO scans
+      TRIVY_AC_REPORT_PRODUCT: $TRIVY_AC_REPORT_PRODUCT
+      TRIVY_AC_REPORT_SUBPRODUCT: $TRIVY_AC_REPORT_SUBPRODUCT
 
-# Run unit tests
-unit-tests:
-  stage: test
-  dependencies:
-    - maven-build
-  script:
-    - mvn test ${MAVEN_CLI_OPTS} -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest" -DfailIfNoTests=false
-  artifacts:
-    paths:
-      - target/surefire-reports/
-    reports:
-      junit: target/surefire-reports/*.xml
-    expire_in: 1 week
+  - component: $CI_SERVER_FQDN/components/sonarqube/sonarqube@~latest
+    # Run on MR events, but not the one created for the release branch; sonarqube is done before deciding to release.
+    rules:
+      - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME !~ /^release\//'
+    inputs:
+      SONAR_SCAN_STAGE_NAME: build
+      SONAR_QG_STAGE_NAME: build
+      SONAR_SOURCES: src
+      SONAR_BUILD_IMAGE: $MAVEN_RELEASE_IMAGE
+      SONAR_PROJECT_TYPE: java
 
-# Package the application
-maven-package:
-  stage: test
-  dependencies:
-    - maven-build
-  script:
-    - mvn package ${MAVEN_CLI_OPTS} -DskipTests
-  artifacts:
-    paths:
-      - target/*.jar
-      - target/*-jar-with-dependencies.jar
-    expire_in: 1 week
-
-# Build and push Docker image
-docker-build-push:
-  stage: docker-build
-  image: docker:27
-  services:
-    - name: docker:dind
-      command: ["--tls=false"]
-  dependencies:
-    - maven-package
-  before_script:
-    - mkdir ~/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > ~/.docker/config.json
-  script:
-    # Set IMAGE_TAG: use git tag if available, otherwise commit SHA
-    - IMAGE_TAG="${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}"
-    - echo "Building image with tag: $IMAGE_TAG"
-    - docker build -t $CI_REGISTRY_IMAGE:${IMAGE_TAG} .
-    - docker push $CI_REGISTRY_IMAGE:${IMAGE_TAG}
-    # Push latest only for main branch or tags
-    - |
-      if [ -n "$CI_COMMIT_TAG" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; then
-        docker tag $CI_REGISTRY_IMAGE:${IMAGE_TAG} $CI_REGISTRY_IMAGE:latest
-        docker push $CI_REGISTRY_IMAGE:latest
-      fi
-  rules:
-    - if: $CI_COMMIT_TAG  # Run on tags
-    - if: $CI_COMMIT_BRANCH == "main"  # Run on main
-    - if: $CI_COMMIT_BRANCH  # Run on other branches (manual)
-      when: manual
-
-# Create GitLab release for tags
-create-release:
-  stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
-  script:
-    - echo "Creating release for $CI_COMMIT_TAG"
-  release:
-    tag_name: $CI_COMMIT_TAG
-    name: "Release $CI_COMMIT_TAG"
-    description: "Release $CI_COMMIT_TAG of FRA Report Generator"
-  rules:
-    - if: $CI_COMMIT_TAG
+  - component: $CI_SERVER_FQDN/RailwayNet/ci-components/java-build-test@HEAD
+    rules:
+      - if: '$CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+    inputs:
+      maven_build_image: $MAVEN_RELEASE_IMAGE
+      maven_cli_opts: $MAVEN_CLI_OPTS
+      start_dir: .

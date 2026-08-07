@@ -45,7 +45,7 @@ RUN groupadd -g 1001 appgroup && \
 WORKDIR /opt/fra-report-generator
 
 # Copy the built JAR from builder stage
-COPY --from=builder /app/target/fra-report-generator-*-jar-with-dependencies.jar fra-report-generator.jar
+COPY --from=builder /app/target/fra-report-generator-jar-with-dependencies.jar fra-report-generator.jar
 
 # Copy Excel templates
 COPY build/*.xlsx ./

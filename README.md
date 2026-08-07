@@ -61,8 +61,11 @@ Docker Container (from GitLab registry)
 # Build JAR
 mvn clean package
 
-# Run unit tests
-mvn test -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest"
+# Run unit tests (integration + benchmark suites are excluded in pom.xml)
+mvn test
+
+# Run integration tests (requires a running Docker daemon)
+mvn test -Dtest="*IntegrationTest"
 
 # Build Docker image locally
 docker build -t fra-report-generator .
@@ -72,7 +75,7 @@ docker build -t fra-report-generator .
 
 ```bash
 # With config file
-java -jar target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/fra-report-generator-jar-with-dependencies.jar
 
 # With Docker
 docker run \
@@ -118,21 +121,32 @@ aws.s3bucket.report = rwn-amtk-report-prod
 
 ## GitLab CI/CD
 
-The pipeline (`.gitlab-ci.yml`) includes:
+The pipeline (`.gitlab-ci.yml`) is assembled from shared RailwayNet CI
+components rather than hand-rolled jobs, so security scanning is inherited from
+the platform:
 
-1. **build**: Compile Java application
-2. **test**: Run unit tests
-3. **docker-build-push**: Build and push to GitLab Container Registry
+| Trigger | Component | What it does |
+|---|---|---|
+| push, merge request | `java-build-test` | Compile + unit tests |
+| merge request (non-release) | `sonarqube` | SAST scan + quality gate |
+| manual, default branch | `java-release-flow` | Build, Trivy/CATO scan, image build + push, release |
 
-Images are pushed to: `registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter`
+Releases are **manually started** — trigger a pipeline from the GitLab UI on the
+default branch. There is no tag-triggered or push-triggered image build.
+
+Image publishing is owned by `java-release-flow`; confirm the destination
+registry and tag scheme with the platform team before pinning an image tag in
+Terraform.
 
 ## AWS Deployment
 
 ### Docker Image
 
-Pull from GitLab registry:
+Pull the published image. The destination registry and tag scheme are owned by
+`java-release-flow`, not by this repo — confirm both with the platform team
+before scripting against them:
 ```bash
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
+docker pull <registry>/<path>/fra-reporter:<tag>
 ```
 
 ### AWS Batch Setup
@@ -150,7 +164,7 @@ docker run \
   -e DOCDB_URI="mongodb://user:pass@docdb-cluster:27017/?tls=true" \
   -e MONGO_URI="mongodb://mongo-host:27017" \
   -e DB_NAME="amtk_reports" \
-  registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
+  <registry>/<path>/fra-reporter:<tag>
 ```
 
 ## Reports

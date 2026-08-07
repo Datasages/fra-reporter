@@ -46,11 +46,15 @@ mvn clean package -DskipTests
 # Build with tests
 mvn clean package
 
-# Run unit tests only (excludes integration tests)
-mvn test -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest"
+# Run unit tests only — the integration and benchmark suites are excluded
+# in pom.xml's surefire config, so no filter flag is needed here
+mvn test
+
+# Run the integration suite explicitly (requires a running Docker daemon)
+mvn test -Dtest="*IntegrationTest"
 ```
 
-The built JAR will be at: `target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar`
+The built JAR will be at: `target/fra-report-generator-jar-with-dependencies.jar`
 
 ### Build Docker Image
 
@@ -95,7 +99,7 @@ docker build -t fra-report-generator:v1.3.0 .
 2. **Run the application**
    ```bash
    cd build
-   java -jar ../target/fra-report-generator-1.0-SNAPSHOT-jar-with-dependencies.jar
+   java -jar ../target/fra-report-generator-jar-with-dependencies.jar
    ```
 
 ### Option 2: Run with Docker
@@ -116,15 +120,17 @@ docker run --rm \
 
 ### Pull from GitLab Registry
 
+The registry and tag scheme are owned by the `java-release-flow` component, not
+by this repo — the old `docker-build-push` job that produced `:latest` and
+`:v1.3.0` tags no longer exists. Confirm both with the platform team and
+substitute below:
+
 ```bash
-# Login to GitLab registry
-docker login registry-gitlab.corp.wabtec.com
+# Login to the registry java-release-flow publishes to
+docker login <registry>
 
-# Pull latest image
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
-
-# Pull specific version
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:v1.3.0
+# Pull the image
+docker pull <registry>/<path>/fra-reporter:<tag>
 ```
 
 ### Environment Variables
@@ -281,6 +287,11 @@ Edit `pom.xml` and update the version:
 <version>1.3.0</version>
 ```
 
+> Check with the platform team whether `java-release-flow` bumps the version
+> itself. If it does, skip this step — bumping by hand would conflict with it.
+> Either way the built JAR filename is unaffected: `<finalName>` pins it to
+> `fra-report-generator`, independent of version.
+
 ### 2. Commit and Push
 
 ```bash
@@ -294,24 +305,28 @@ git push origin main
 Verify the build passes at:
 `https://gitlab.corp.wabtec.com/railwaynet/fra-reporter/-/pipelines`
 
-### 4. Create and Push Tag
+### 4. Start the Release Pipeline
 
-```bash
-git tag v1.3.0
-git push origin refs/tags/v1.3.0
-```
+Releases are **manually triggered**, not tag-triggered. Pushing a tag no longer
+builds or publishes an image, and creates no GitLab Release — a tag push is a
+`push` pipeline source, so it runs only `java-build-test`.
 
-This triggers:
-- Docker image pushed as `fra-reporter:v1.3.0`
-- Docker image pushed as `fra-reporter:latest`
-- GitLab Release created
+In the GitLab UI: **Build → Pipelines → Run pipeline**, with the default branch
+selected. That satisfies the `java-release-flow` rule
+(`$CI_PIPELINE_SOURCE == "web"` on `$CI_DEFAULT_BRANCH`).
+
+The release flow builds the JAR, runs the Trivy/CATO scan, builds the image from
+`Dockerfile.ci`, and publishes. Confirm the resulting image tag with the platform
+team — the tag scheme is owned by the component, not by this repo.
 
 ### 5. Update AWS Batch (if needed)
 
-If using a specific version in Terraform:
+If pinning a specific image in Terraform, use the tag confirmed in step 4 — the
+old `v1.3.0`-style tags came from the deleted `docker-build-push` job and are no
+longer produced:
 ```hcl
 variable "fra_reporter_image_tag" {
-  default = "v1.3.0"
+  default = "<tag-confirmed-in-step-4>"
 }
 ```
 
@@ -373,7 +388,10 @@ To run for a specific month (e.g., December 2025):
    init.month = 12
    ```
 
-2. Run the application:
+2. Run the application (this is the in-container name — the image renames the
+   fat JAR to `fra-report-generator.jar`). Running from a local checkout
+   instead, use `../target/fra-report-generator-jar-with-dependencies.jar`;
+   `target/fra-report-generator.jar` is the thin JAR and has no `Main-Class`:
    ```bash
    java -jar fra-report-generator.jar
    ```

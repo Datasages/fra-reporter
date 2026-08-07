@@ -1,42 +1,38 @@
-# Dockerfile for FRA Report Generator - Monthly Automated Runs
-# Multi-stage build with MongoDB tools for sync
+# Dockerfile for FRA Report Generator — GitLab CI (java-release-flow)
+#
+# Runtime-only. The java-release-flow component builds the fat JAR with Maven
+# BEFORE calling docker build, then passes JAR_FILE_BASE / JRE_BASE_IMAGE in as
+# build args. That is why this file has no builder stage — unlike ./Dockerfile,
+# which compiles from source and is used for local and AWS Batch builds.
+#
+# ⚠️ The runtime layers below duplicate ./Dockerfile's runtime stage, and nothing
+# enforces that they stay identical. ./Dockerfile is what runs on AWS Batch today;
+# this file is what the release flow ships — so a divergence changes production
+# behaviour with no build failure. When editing either, mirror the other for:
+#   - the mongodb-database-tools / AWS CLI install block (incl. the pinned 100.10.0)
+#   - the appuser/appgroup uid+gid (1001)
+#   - the inline log4j2.xml
+#   - JAVA_OPTS, TZ, and every ENV default (notably S3_BUCKET, DB_NAME)
+#   - the ENTRYPOINT
+# The durable fix is a shared runtime base image both files FROM; deferred.
 
-FROM eclipse-temurin:17-jdk AS builder
+# ARG names must match the build args java-release-flow emits, which derive from
+# its OWN input names (jre_base_image / jar_file_base) — not from the variable
+# names in .gitlab-ci.yml. Verify against the ris project's Dockerfile on the
+# first release run: a mismatch expands the FROM to empty and fails the build.
+ARG JRE_BASE_IMAGE
+FROM ${JRE_BASE_IMAGE}
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    maven \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy Maven files first for better layer caching
-COPY pom.xml ./
-
-# Download dependencies (this layer will be cached unless pom.xml changes)
-RUN mvn dependency:go-offline -B
-
-# Copy source code
-COPY src ./src
-
-# Build the application (skip tests - they require external dependencies)
-RUN mvn clean package -DskipTests -B
-
-# Verify JAR was created
-RUN ls -la target/ && \
-    find target -name "*-jar-with-dependencies.jar" -exec echo "Built JAR: {}" \;
-
-# Runtime stage
-FROM eclipse-temurin:17-jre
+# ARGs declared before FROM are not in build-stage scope, so JAR_FILE_BASE is
+# declared here rather than above.
+ARG JAR_FILE_BASE
 
 # Install runtime dependencies including MongoDB tools and AWS CLI for sync
 # Download MongoDB tools directly since apt packages may not be available for all architectures
-# ⚠️ Known gap, mirrored in Dockerfile.ci: run-monthly.sh step 4 calls mongosh,
-# which ships in neither mongodb-database-tools nor this base image. The call is
-# swallowed by `|| echo "0"`, so message-retention cleanup silently no-ops and
-# every run reports "Deleted 0 old messages". Fix in both Dockerfiles together.
+# ⚠️ Known gap, carried forward from ./Dockerfile: run-monthly.sh step 4 calls
+# mongosh, which ships in neither mongodb-database-tools nor this base image. The
+# call is swallowed by `|| echo "0"`, so message-retention cleanup silently no-ops
+# and every run reports "Deleted 0 old messages". Fix in both Dockerfiles together.
 RUN apt-get update && apt-get install -y \
     curl \
     bash \
@@ -63,8 +59,9 @@ RUN groupadd -g 1001 appgroup && \
 # Set working directory
 WORKDIR /opt/fra-report-generator
 
-# Copy the built JAR from builder stage
-COPY --from=builder /app/target/fra-report-generator-jar-with-dependencies.jar fra-report-generator.jar
+# Copy the pre-built fat JAR produced by the Maven stage of java-release-flow.
+# run-monthly.sh resolves the jar at a fixed name, so it is renamed on copy.
+COPY ${JAR_FILE_BASE}.jar fra-report-generator.jar
 
 # Copy Excel templates
 COPY build/*.xlsx ./
