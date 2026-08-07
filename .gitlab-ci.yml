@@ -25,8 +25,9 @@ variables:
   #   1. Nothing to publish. fra-reporter has no <distributionManagement> in
   #      pom.xml; it ships a container image, not a Maven artifact. The ris
   #      ci_settings.xml exists to supply JFrog credentials for publishing.
-  #   2. Nothing to resolve through. There is no internal Wabtec Maven mirror,
-  #      so dependency resolution goes to the default public repositories.
+  #   2. Nothing to resolve through. No internal Wabtec Maven mirror is in use
+  #      for this project — the previous pipeline resolved from the default
+  #      public repositories with no settings file and built successfully.
   # Add the settings file back if either changes — i.e. if java-release-flow
   # runs mvn deploy, or if an internal mirror is introduced.
   MAVEN_CLI_OPTS: '-B --no-transfer-progress'

@@ -61,8 +61,11 @@ Docker Container (from GitLab registry)
 # Build JAR
 mvn clean package
 
-# Run unit tests
-mvn test -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest"
+# Run unit tests (integration + benchmark suites are excluded in pom.xml)
+mvn test
+
+# Run integration tests (requires a running Docker daemon)
+mvn test -Dtest="*IntegrationTest"
 
 # Build Docker image locally
 docker build -t fra-report-generator .
@@ -139,9 +142,11 @@ Terraform.
 
 ### Docker Image
 
-Pull from GitLab registry:
+Pull the published image. The destination registry and tag scheme are owned by
+`java-release-flow`, not by this repo — confirm both with the platform team
+before scripting against them:
 ```bash
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
+docker pull <registry>/<path>/fra-reporter:<tag>
 ```
 
 ### AWS Batch Setup
@@ -159,7 +164,7 @@ docker run \
   -e DOCDB_URI="mongodb://user:pass@docdb-cluster:27017/?tls=true" \
   -e MONGO_URI="mongodb://mongo-host:27017" \
   -e DB_NAME="amtk_reports" \
-  registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
+  <registry>/<path>/fra-reporter:<tag>
 ```
 
 ## Reports

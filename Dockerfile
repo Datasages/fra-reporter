@@ -33,6 +33,10 @@ FROM eclipse-temurin:17-jre
 
 # Install runtime dependencies including MongoDB tools and AWS CLI for sync
 # Download MongoDB tools directly since apt packages may not be available for all architectures
+# ⚠️ Known gap, mirrored in Dockerfile.ci: run-monthly.sh step 4 calls mongosh,
+# which ships in neither mongodb-database-tools nor this base image. The call is
+# swallowed by `|| echo "0"`, so message-retention cleanup silently no-ops and
+# every run reports "Deleted 0 old messages". Fix in both Dockerfiles together.
 RUN apt-get update && apt-get install -y \
     curl \
     bash \

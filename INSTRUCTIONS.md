@@ -46,8 +46,12 @@ mvn clean package -DskipTests
 # Build with tests
 mvn clean package
 
-# Run unit tests only (excludes integration tests)
-mvn test -Dtest="*Test,!*IntegrationTest,!*BenchmarkTest"
+# Run unit tests only — the integration and benchmark suites are excluded
+# in pom.xml's surefire config, so no filter flag is needed here
+mvn test
+
+# Run the integration suite explicitly (requires a running Docker daemon)
+mvn test -Dtest="*IntegrationTest"
 ```
 
 The built JAR will be at: `target/fra-report-generator-jar-with-dependencies.jar`
@@ -116,15 +120,17 @@ docker run --rm \
 
 ### Pull from GitLab Registry
 
+The registry and tag scheme are owned by the `java-release-flow` component, not
+by this repo — the old `docker-build-push` job that produced `:latest` and
+`:v1.3.0` tags no longer exists. Confirm both with the platform team and
+substitute below:
+
 ```bash
-# Login to GitLab registry
-docker login registry-gitlab.corp.wabtec.com
+# Login to the registry java-release-flow publishes to
+docker login <registry>
 
-# Pull latest image
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:latest
-
-# Pull specific version
-docker pull registry-gitlab.corp.wabtec.com/railwaynet/fra-reporter:v1.3.0
+# Pull the image
+docker pull <registry>/<path>/fra-reporter:<tag>
 ```
 
 ### Environment Variables
@@ -301,8 +307,9 @@ Verify the build passes at:
 
 ### 4. Start the Release Pipeline
 
-Releases are **manually triggered**, not tag-triggered. Pushing a tag starts no
-pipeline.
+Releases are **manually triggered**, not tag-triggered. Pushing a tag no longer
+builds or publishes an image, and creates no GitLab Release — a tag push is a
+`push` pipeline source, so it runs only `java-build-test`.
 
 In the GitLab UI: **Build → Pipelines → Run pipeline**, with the default branch
 selected. That satisfies the `java-release-flow` rule
