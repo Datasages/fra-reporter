@@ -36,8 +36,8 @@ variables:
   # They MUST match what the output jar file is and the JRE used to run it.
   #
   # jar name is pinned by <finalName> in pom.xml — do NOT put the project
-  # version in this path, java-release-flow bumps the version during a release
-  # and a version-stamped path would break on the first cut.
+  # version in this path. This value is static while ${project.version} moves,
+  # so a version-stamped path stops matching the moment the version changes.
   JAR_FILE_BASE: target/fra-report-generator-jar-with-dependencies
   # Runtime base image (the component's jre_base_image input), NOT the build
   # JDK — that is MAVEN_RELEASE_IMAGE above. Java 17 because pom.xml targets 17.
