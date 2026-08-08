@@ -1,0 +1,190 @@
+name: Dependency vulnerability scan
+
+# Scans for known dependency vulnerabilities using ecosystem-native tools.
+# Auto-detects Go, Node, Rust, Python, and Java/Maven based on manifest files.
+# Non-blocking — reports findings via PR comment but never fails the build.
+# Known/accepted vulnerabilities tracked in security/vulnerability-baseline.yml.
+# New findings are posted as PR comments for Claude Code to pick up.
+
+on:
+  push:
+    branches-ignore: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# TODO: Set versions to match your project. Unused ecosystems are harmless —
+# scanner steps only run when the corresponding lock file exists.
+env:
+  GO_VERSION: "1.24"
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+  RUST_VERSION: "stable"
+  JAVA_VERSION: "17"
+
+jobs:
+  vulnerability-scan:
+    # TODO: Set environment name to match your entity (e.g. "NeuroSim Development")
+    # Ensure this environment exists in GitHub -> Settings -> Environments
+    environment: "Wabtec Development"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Go vulnerabilities ──────────────────────────────────────────────────
+      - name: Set up Go
+        if: hashFiles('go.sum') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Scan Go dependencies
+        if: hashFiles('go.sum') != ''
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -format json ./... > /tmp/go-vulns.json 2>&1 || true
+
+      # ── Node vulnerabilities ────────────────────────────────────────────────
+      - name: Set up Node.js
+        if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != '' || hashFiles('pnpm-lock.yaml') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Scan Node dependencies
+        if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != '' || hashFiles('pnpm-lock.yaml') != ''
+        continue-on-error: true
+        run: |
+          npm audit --json > /tmp/node-vulns.json 2>&1 || true
+
+      # ── Rust vulnerabilities ────────────────────────────────────────────────
+      - name: Set up Rust
+        if: hashFiles('Cargo.lock') != ''
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Scan Rust dependencies
+        if: hashFiles('Cargo.lock') != ''
+        continue-on-error: true
+        run: |
+          cargo install cargo-audit --quiet
+          cargo audit --json > /tmp/rust-vulns.json 2>&1 || true
+
+      # ── Python vulnerabilities ──────────────────────────────────────────────
+      - name: Set up Python
+        if: hashFiles('requirements*.txt') != '' || hashFiles('poetry.lock') != '' || hashFiles('uv.lock') != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Scan Python dependencies
+        if: hashFiles('requirements*.txt') != '' || hashFiles('poetry.lock') != '' || hashFiles('uv.lock') != ''
+        continue-on-error: true
+        run: |
+          pip install pip-audit --quiet
+          pip-audit --format json > /tmp/python-vulns.json 2>&1 || true
+
+      # ── Java/Maven vulnerabilities ─────────────────────────────────────────
+      # Uses trivy to scan pom.xml / build.gradle directly — no build step
+      # needed, no NVD API key required, works with private/internal deps.
+      # For projects that prefer OWASP dependency-check (e.g. already in
+      # pom.xml), run `mvn dependency-check:check` instead and adjust the
+      # parser in vuln-report.py accordingly.
+      - name: Install Trivy
+        if: hashFiles('pom.xml') != '' || hashFiles('build.gradle*') != ''
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Scan Java dependencies
+        if: hashFiles('pom.xml') != '' || hashFiles('build.gradle*') != ''
+        continue-on-error: true
+        run: |
+          trivy fs --format json --output /tmp/java-vulns.json \
+            --scanners vuln --pkg-types library . 2>&1 || true
+
+      # ── Generate report and post findings ───────────────────────────────────
+      - name: Install report dependencies
+        run: python3 -m pip install pyyaml --quiet
+
+      - name: Generate vulnerability report
+        id: report
+        run: |
+          python3 scripts/vuln-report.py \
+            --baseline security/vulnerability-baseline.yml \
+            --output /tmp/vuln-report.md \
+            --go /tmp/go-vulns.json \
+            --node /tmp/node-vulns.json \
+            --rust /tmp/rust-vulns.json \
+            --python /tmp/python-vulns.json \
+            --java /tmp/java-vulns.json
+
+      - name: Write step summary
+        if: always()
+        run: |
+          if [ -f /tmp/vuln-report.md ]; then
+            cat /tmp/vuln-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No vulnerability report generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Post or update the PR comment. Uses a hidden HTML marker so repeated
+      # pushes update the same comment instead of creating new ones.
+      - name: Post PR comment
+        if: github.event_name == 'pull_request' && always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -f /tmp/vuln-report.md ]; then
+            exit 0
+          fi
+
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("<!-- vuln-scan-report -->")) | .id' \
+            | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+              --method PATCH \
+              --field body=@/tmp/vuln-report.md
+          else
+            gh pr comment "$PR_NUMBER" --body-file /tmp/vuln-report.md
+          fi
+
+      # On push events, find the associated PR (if any) and comment there.
+      - name: Post PR comment (push event)
+        if: github.event_name == 'push' && always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f /tmp/vuln-report.md ]; then
+            exit 0
+          fi
+
+          BRANCH="${{ github.ref_name }}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No open PR for branch ${BRANCH} — report is in step summary only."
+            exit 0
+          fi
+
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("<!-- vuln-scan-report -->")) | .id' \
+            | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+              --method PATCH \
+              --field body=@/tmp/vuln-report.md
+          else
+            gh pr comment "$PR_NUMBER" --body-file /tmp/vuln-report.md
+          fi
